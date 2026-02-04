@@ -1,23 +1,16 @@
-import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
-import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
-      },
-      plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
-      }
-    };
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  preview: {
+    // Allows the specific Render host to bypass the security check in Vite 6 preview mode
+    allowedHosts: ['geniues-streamer.onrender.com'],
+    // Ensure the preview server listens on all addresses for Render's routing
+    host: true,
+    // Use the port provided by Render's environment variable or fallback
+    port: Number(process.env.PORT) || 4173,
+  },
+  server: {
+    host: true,
+  }
 });
