@@ -15,7 +15,7 @@ export const NASA_CHANNELS: Channel[] = [
 export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
   {
     name: 'Kairo Exclusives',
-    url: '', // Local injection
+    url: '', // Local injection via NASA_CHANNELS
     type: 'Featured'
   },
   {
@@ -29,6 +29,51 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
     type: 'Redbox'
   },
   {
+    name: 'Global News',
+    url: 'https://iptv-org.github.io/iptv/categories/news.m3u',
+    type: 'News'
+  },
+  {
+    name: 'Movies',
+    url: 'https://iptv-org.github.io/iptv/categories/movies.m3u',
+    type: 'Entertainment'
+  },
+  {
+    name: 'Documentary',
+    url: 'https://iptv-org.github.io/iptv/categories/documentary.m3u',
+    type: 'Education'
+  },
+  {
+    name: 'Music',
+    url: 'https://iptv-org.github.io/iptv/categories/music.m3u',
+    type: 'Entertainment'
+  },
+  {
+    name: 'Sports',
+    url: 'https://iptv-org.github.io/iptv/categories/sports.m3u',
+    type: 'Sports'
+  },
+  {
+    name: 'Free-TV Project',
+    url: 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8',
+    type: 'Global'
+  },
+  {
+    name: 'France (Tuto)',
+    url: 'https://raw.githubusercontent.com/tuto1902/TutoIPTV/master/France.m3u',
+    type: 'Regional'
+  },
+  {
+    name: 'Italy (Tuto)',
+    url: 'https://raw.githubusercontent.com/tuto1902/TutoIPTV/master/Italy.m3u',
+    type: 'Regional'
+  },
+  {
+    name: 'Spain (Tuto)',
+    url: 'https://raw.githubusercontent.com/tuto1902/TutoIPTV/master/Spain.m3u',
+    type: 'Regional'
+  },
+  {
     name: 'Distro',
     url: 'https://www.apsattv.com/distro.m3u',
     type: 'Distro'
@@ -37,11 +82,6 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
     name: 'Samsung USA',
     url: 'https://www.apsattv.com/ssungusa.m3u',
     type: 'Samsung'
-  },
-  {
-    name: 'Sports',
-    url: 'https://iptv-org.github.io/iptv/categories/sports.m3u',
-    type: 'Sports'
   }
 ];
 

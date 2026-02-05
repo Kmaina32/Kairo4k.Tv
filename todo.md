@@ -1,13 +1,14 @@
-# 🚀 Nexus Stream Expansion Roadmap
+
+# 🚀 Kairo 4k Stream Expansion Roadmap
 
 Goal: Transform the app into a universal media aggregator by integrating high-quality streams from the Kodi and Stremio ecosystems.
 
 ---
 
-## 📡 Phase 1: High-Priority Source Aggregation
-- [ ] **GitHub IPTV-org Integration**: Implement a logic to pull from the massive `iptv-org` language/country specific playlists beyond just 'Sports'.
-- [ ] **Free-TV Project**: Integrate the `Free-TV/IPTV` repository for 2000+ localized global channels.
-- [ ] **TutoIPTV Repos**: Add links to validated community-maintained playlists for French, Spanish, and Italian networks.
+## ✅ Phase 1: High-Priority Source Aggregation (COMPLETED)
+- [x] **GitHub IPTV-org Integration**: Pulling from `iptv-org` News, Movies, Music, and Documentary categories.
+- [x] **Free-TV Project**: Integrated the `Free-TV/IPTV` repository for global localized content.
+- [x] **TutoIPTV Repos**: Added validated community-maintained playlists for France, Italy, and Spain.
 
 ## 🛠 Phase 2: Stremio & Kodi Protocol Bridges
 - [ ] **Stremio Addon Parser**: Build a compatibility layer to fetch stream URLs from standard Stremio Addon JSON manifests (HTTPS/HLS).

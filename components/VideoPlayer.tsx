@@ -1,3 +1,5 @@
+
+/// <reference types="react" />
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 declare global {

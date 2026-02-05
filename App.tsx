@@ -1,9 +1,11 @@
 
+/// <reference types="react" />
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Channel } from './types';
 import { DEFAULT_PLAYLISTS, PROXY_OPTIONS, NASA_CHANNELS } from './constants';
 import { parseM3U } from './services/m3uParser';
 import VideoPlayer from './components/VideoPlayer';
+import { getChannelInsight } from './services/geminiService';
 
 const App: React.FC = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -15,6 +17,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('Kairo Exclusives');
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
   const [isTheater, setIsTheater] = useState(false);
+  const [aiInsight, setAiInsight] = useState<string>('');
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,6 +28,18 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Use Gemini to get insight whenever the selected channel changes
+  useEffect(() => {
+    if (selectedChannel) {
+      setAiInsight('Signal frequency analysis in progress...');
+      getChannelInsight(selectedChannel.name, selectedChannel.group)
+        .then(res => setAiInsight(res))
+        .catch(() => setAiInsight('Unable to establish AI insight uplink.'));
+    } else {
+      setAiInsight('');
+    }
+  }, [selectedChannel]);
 
   const availableSources = useMemo(() => {
     const sources = Array.from(new Set(channels.map(c => c.source)));
@@ -260,6 +275,17 @@ const App: React.FC = () => {
                           <span className="bg-indigo-500/10 text-indigo-400 px-4 py-1.5 rounded-full text-[10px] font-black border border-indigo-500/20 uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/5">{selectedChannel.source}</span>
                           <span className="bg-emerald-500/10 text-emerald-400 px-4 py-1.5 rounded-full text-[10px] font-black border border-emerald-500/20 uppercase tracking-[0.2em]">4K Ultra Signal</span>
                         </div>
+                        
+                        {/* Gemini AI Insight Section */}
+                        {aiInsight && (
+                          <div className="mt-8 p-6 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl text-left">
+                            <div className="flex items-center space-x-2 mb-3">
+                              <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Gemini AI Frequency Analysis</span>
+                            </div>
+                            <p className="text-xs text-slate-300 leading-relaxed italic">{aiInsight}</p>
+                          </div>
+                        )}
                       </div>
                    </div>
                 </div>
