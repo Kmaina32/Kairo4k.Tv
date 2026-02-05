@@ -1,5 +1,4 @@
-
-// Fix: Use a more robust import pattern for React to ensure JSX intrinsic elements are recognized
+// Standard React import to ensure JSX intrinsic elements are recognized
 import * as React from 'react';
 import { Channel } from '../types';
 import BrandLogo from './BrandLogo';
@@ -18,6 +17,7 @@ interface SidebarProps {
   onChannelSelect: (channel: Channel) => void;
 }
 
+// Use React wildcard import to fix JSX intrinsic elements missing from global namespace
 const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   isTheater,

@@ -1,5 +1,4 @@
-
-// Fix: Use a more robust import pattern for React to ensure JSX intrinsic elements are recognized
+// Standard React import to resolve JSX intrinsic elements namespace issues
 import * as React from 'react';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Channel } from './types';
@@ -15,6 +14,7 @@ import ChannelInsight from './components/ChannelInsight';
 import LoadingScreen from './components/LoadingScreen';
 import MobileNav from './components/MobileNav';
 
+// Use React wildcard import to ensure JSX intrinsic elements are recognized correctly
 const App: React.FC = () => {
   // Initialize with local channels to avoid empty start
   const [channels, setChannels] = useState<Channel[]>(NASA_CHANNELS);
@@ -23,7 +23,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('Kairo Exclusives');
+  const [activeTab, setActiveTab] = useState<string>('Distro');
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
   const [isTheater, setIsTheater] = useState(false);
   const [aiInsight, setAiInsight] = useState<string>('');
@@ -56,19 +56,42 @@ const App: React.FC = () => {
   const fetchWithFallback = async (url: string): Promise<string> => {
     if (!url) return ''; 
     let lastError = null;
+
     for (const proxy of PROXY_OPTIONS) {
       try {
-        const finalUrl = `${proxy}${encodeURIComponent(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now())}`;
-        const res = await fetch(finalUrl);
+        const finalUrl = proxy === 'DIRECT' 
+          ? url 
+          : `${proxy}${encodeURIComponent(url)}`;
+        
+        // Use a timeout to avoid hanging on dead proxies
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const res = await fetch(finalUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (!res.ok) continue;
+
         let text = await res.text();
-        if (proxy.includes('allorigins')) {
-          try { text = JSON.parse(text).contents; } catch(e) {}
+        
+        // Handle AllOrigins JSON wrapper if raw fails
+        if (proxy.includes('allorigins') && !text.includes('#EXTM3U')) {
+          try {
+            const json = JSON.parse(text);
+            text = json.contents || text;
+          } catch(e) {}
         }
-        if (text && (text.includes('#EXTM3U') || text.includes('#EXTINF'))) return text;
-      } catch (e) { lastError = e; }
+
+        // Validate content is actually an M3U playlist
+        if (text && (text.includes('#EXTM3U') || text.includes('#EXTINF'))) {
+          return text;
+        }
+      } catch (e) {
+        lastError = e;
+        console.warn(`Proxy ${proxy} failed for ${url}:`, e);
+      }
     }
-    throw lastError || new Error("Connection failed");
+    throw lastError || new Error("Connection failed across all uplink nodes.");
   };
 
   const loadAllFeeds = useCallback(async (isInitial = false) => {
@@ -82,6 +105,7 @@ const App: React.FC = () => {
     setError(null);
     
     // Background fetch each source individually to avoid blocking
+    // Using individual promises to update UI as they arrive
     DEFAULT_PLAYLISTS.forEach(async (p) => {
       if (!p.url) return;
       try {
@@ -95,13 +119,13 @@ const App: React.FC = () => {
           });
         }
       } catch (e) {
-        console.error(`Failed to fetch ${p.name}`, e);
+        console.error(`Failed to fetch signal node: ${p.name}`, e);
       }
     });
 
     // Cleanup refreshing state after a reasonable time for background tasks
     if (!isInitial) {
-      setTimeout(() => setIsRefreshing(false), 2000);
+      setTimeout(() => setIsRefreshing(false), 3000);
     }
   }, []);
 
@@ -129,7 +153,7 @@ const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTheater]);
+  }, []);
 
   const toggleTheater = () => setIsTheater(prev => !prev);
 
@@ -165,7 +189,7 @@ const App: React.FC = () => {
           isTheater={isTheater}
           sidebarOpen={sidebarOpen}
           onSidebarToggle={setSidebarOpen}
-          title={selectedChannel?.name || 'Kairo Uplink Ready'}
+          title={selectedChannel?.name || 'K 4k Uplink Ready'}
           isRefreshing={isRefreshing}
           onRefresh={() => loadAllFeeds()}
         />
@@ -203,7 +227,7 @@ const App: React.FC = () => {
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
-               <div className="text-8xl font-black italic tracking-tighter text-indigo-500/20 uppercase mb-12 select-none">Kairo</div>
+               <div className="text-8xl font-black italic tracking-tighter text-indigo-500/20 uppercase mb-12 select-none">K 4k</div>
                <p className="text-[11px] font-black uppercase tracking-[0.5em] text-indigo-400/50">Frequency Selection Required</p>
             </div>
           )}
@@ -211,9 +235,6 @@ const App: React.FC = () => {
 
         <MobileNav 
           isTheater={isTheater}
-          availableSources={availableSources}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
           onSidebarOpen={() => setSidebarOpen(true)}
         />
       </div>

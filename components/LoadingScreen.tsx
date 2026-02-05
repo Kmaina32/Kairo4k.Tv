@@ -1,8 +1,8 @@
-
-// Fix: Use a more robust import pattern for React to ensure JSX intrinsic elements are recognized
+// Standard React import to ensure JSX intrinsic elements are recognized
 import * as React from 'react';
 import BrandLogo from './BrandLogo';
 
+// Use React wildcard import to ensure JSX intrinsic elements are recognized
 const LoadingScreen: React.FC = () => {
   return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-[#020617]">

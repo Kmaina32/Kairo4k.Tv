@@ -8,13 +8,23 @@ export const NASA_CHANNELS: Channel[] = [
     group: 'Science & Education',
     logo: 'https://www.nasa.gov/wp-content/themes/nasa/assets/images/nasa-logo.svg',
     url: 'http://nasatv-lh.akamaihd.net/i/NASA_101@319270/index_1000_av-p.m3u8',
-    source: 'Kairo Exclusives'
+    source: 'K 4k'
   }
 ];
 
 export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
   {
-    name: 'Kairo Exclusives',
+    name: 'Distro',
+    url: 'https://www.apsattv.com/distro.m3u',
+    type: 'Distro'
+  },
+  {
+    name: 'Sports',
+    url: 'https://iptv-org.github.io/iptv/categories/sports.m3u',
+    type: 'Sports'
+  },
+  {
+    name: 'K 4k',
     url: '', // Local injection via NASA_CHANNELS
     type: 'Featured'
   },
@@ -49,11 +59,6 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
     type: 'Entertainment'
   },
   {
-    name: 'Sports',
-    url: 'https://iptv-org.github.io/iptv/categories/sports.m3u',
-    type: 'Sports'
-  },
-  {
     name: 'Free-TV Project',
     url: 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8',
     type: 'Global'
@@ -72,11 +77,6 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
     name: 'Spain (Tuto)',
     url: 'https://raw.githubusercontent.com/tuto1902/TutoIPTV/master/Spain.m3u',
     type: 'Regional'
-  },
-  {
-    name: 'Distro',
-    url: 'https://www.apsattv.com/distro.m3u',
-    type: 'Distro'
   },
   {
     name: 'Samsung USA',

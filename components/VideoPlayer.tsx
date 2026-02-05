@@ -1,5 +1,4 @@
-
-// Fix: Use a more robust import pattern for React to ensure JSX intrinsic elements are recognized
+// Standard React import to ensure JSX intrinsic elements are recognized
 import * as React from 'react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import BrandLogo from './BrandLogo';
@@ -19,6 +18,7 @@ interface VideoPlayerProps {
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
+// Use React wildcard import to fix JSX intrinsic elements missing from global namespace
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onToggleTheater }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
