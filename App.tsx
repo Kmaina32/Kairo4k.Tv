@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Channel } from './types';
 import { DEFAULT_PLAYLISTS, PROXY_OPTIONS } from './constants';
@@ -103,15 +104,23 @@ const App: React.FC = () => {
 
       {/* Sidebar - Channel List */}
       <aside className={`
-        fixed inset-y-0 left-0 z-[70] w-[80vw] max-w-sm lg:static lg:translate-x-0 transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1)
-        flex flex-col border-r border-white/5 bg-slate-950/95 lg:bg-transparent backdrop-blur-3xl
+        fixed inset-y-0 left-0 z-[70] w-[85vw] max-w-sm lg:static lg:translate-x-0 transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+        flex flex-col border-r border-white/5 bg-slate-950/98 lg:bg-slate-950/40 backdrop-blur-3xl
         ${sidebarOpen && !isTheater ? 'translate-x-0' : '-translate-x-full lg:w-0 lg:overflow-hidden'}
       `}>
-        <div className="p-6 border-b border-white/5 space-y-4">
+        <div className="p-6 border-b border-white/5 space-y-5">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-black tracking-tighter text-indigo-400 uppercase">Nexus Hub</h1>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 bg-white/5 rounded-xl text-slate-400"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2}/></svg></button>
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-600/30">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              </div>
+              <h1 className="text-xl font-black italic tracking-tighter text-white uppercase">Nexus</h1>
+            </div>
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 bg-white/5 rounded-xl text-slate-400">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2}/></svg>
+            </button>
           </div>
+
           <input 
             type="text" 
             placeholder="Search signals..." 
@@ -119,7 +128,21 @@ const App: React.FC = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
           />
+
+          {/* Source Selector Chips (Desktop/TV) */}
+          <div className="flex overflow-x-auto no-scrollbar space-x-2 py-1">
+            {availableSources.map(source => (
+              <button 
+                key={source} 
+                onClick={() => setActiveTab(source)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all shrink-0 ${activeTab === source ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/20' : 'bg-white/5 border-transparent text-slate-500 hover:text-slate-300'}`}
+              >
+                {source}
+              </button>
+            ))}
+          </div>
         </div>
+
         <div className="flex-1 overflow-y-auto no-scrollbar">
           {filteredChannels.map((channel) => (
             <button
@@ -155,7 +178,7 @@ const App: React.FC = () => {
           </button>
         </header>
 
-        <main className={`flex-1 overflow-y-auto pb-24 lg:pb-0 relative ${isTheater ? 'p-0' : 'p-4 md:p-10'}`}>
+        <main className={`flex-1 overflow-y-auto pb-24 lg:pb-8 relative ${isTheater ? 'p-0' : 'p-4 md:p-10'}`}>
           {selectedChannel ? (
             <div className={`mx-auto w-full transition-all duration-700 ${isTheater ? 'max-w-full h-full flex items-center' : 'max-w-5xl space-y-8'}`}>
               <div className={`transition-all duration-700 ${isTheater ? 'w-full h-full' : 'relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-white/10'}`}>
@@ -167,8 +190,8 @@ const App: React.FC = () => {
                       <div className="w-20 h-20 bg-slate-950 rounded-2xl flex items-center justify-center p-4 border border-white/5 shadow-inner">
                         <img src={selectedChannel.logo} className="w-full h-full object-contain" alt="" onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(selectedChannel.name)}`} />
                       </div>
-                      <div className="space-y-2">
-                        <h3 className="text-2xl font-black tracking-tighter uppercase">{selectedChannel.name}</h3>
+                      <div className="space-y-2 min-w-0 flex-1">
+                        <h3 className="text-2xl font-black tracking-tighter uppercase truncate">{selectedChannel.name}</h3>
                         <div className="flex space-x-2">
                           <span className="bg-indigo-500/10 text-indigo-400 px-3 py-1 rounded-full text-[9px] font-black border border-indigo-500/20 uppercase tracking-widest">{selectedChannel.source}</span>
                           <span className="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-[9px] font-black border border-emerald-500/20 uppercase tracking-widest">Active</span>
