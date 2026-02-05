@@ -1,8 +1,8 @@
+import React from 'react';
+
 /**
  * Brand logo component for Kairo 4K branding.
  */
-import React from 'react';
-
 interface BrandLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;

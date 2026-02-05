@@ -1,8 +1,8 @@
+import React from 'react';
+
 /**
  * Component for displaying AI-generated channel insights.
  */
-import React from 'react';
-
 interface ChannelInsightProps {
   insight: string;
 }

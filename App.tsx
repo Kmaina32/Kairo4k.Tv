@@ -1,7 +1,4 @@
-/**
- * Main application entry point for Kairo 4K.
- */
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React from 'react';
 import { Channel } from './types';
 import { DEFAULT_PLAYLISTS, PROXY_OPTIONS, NASA_CHANNELS } from './constants';
 import { parseM3U } from './services/m3uParser';
@@ -13,58 +10,50 @@ import Header from './components/Header';
 import LoadingScreen from './components/LoadingScreen';
 import MobileNav from './components/MobileNav';
 
+const CHANNELS_PER_PAGE = 24;
+
 const App = () => {
-  const [channels, setChannels] = useState<Channel[]>(NASA_CHANNELS);
-  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('Distro');
-  const [activeView, setActiveView] = useState<'live' | 'favorites' | 'account'>('live');
-  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
-  const [isTheater, setIsTheater] = useState(false);
-  const [favorites, setFavorites] = useState<Channel[]>([]);
-  const [showShareToast, setShowShareToast] = useState(false);
+  const [channels, setChannels] = React.useState<Channel[]>(NASA_CHANNELS);
+  const [selectedChannel, setSelectedChannel] = React.useState<Channel | null>(null);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [loadingSources, setLoadingSources] = React.useState<Set<string>>(new Set());
+  
+  const [activeTab, setActiveTab] = React.useState<string | null>(null);
+  const [activeView, setActiveView] = React.useState<'live' | 'favorites' | 'account'>('live');
+  const [sidebarOpen, setSidebarOpen] = React.useState(false); 
+  const [isTheater, setIsTheater] = React.useState(false);
+  const [favorites, setFavorites] = React.useState<Channel[]>([]);
+  const [visibleCount, setVisibleCount] = React.useState(CHANNELS_PER_PAGE);
 
-  const availableSources = useMemo(() => DEFAULT_PLAYLISTS.map(p => p.name), []);
+  const availableSources = React.useMemo(() => DEFAULT_PLAYLISTS.map(p => p.name), []);
 
-  // Persistent Favorites
-  useEffect(() => {
+  React.useEffect(() => {
     const saved = localStorage.getItem('kairo_favorites');
     if (saved) {
       try { setFavorites(JSON.parse(saved)); } catch (e) { console.error(e); }
     }
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     localStorage.setItem('kairo_favorites', JSON.stringify(favorites));
   }, [favorites]);
 
-  // DEEP LINKING FIX: Automatically select channel from URL ?channel=ID
-  useEffect(() => {
-    if (channels.length > 0) {
+  React.useEffect(() => {
+    if (!isLoading && channels.length > 0) {
       const params = new URLSearchParams(window.location.search);
       const channelId = params.get('channel');
-      if (channelId && (!selectedChannel || selectedChannel.id !== channelId)) {
+      if (channelId) {
         const chan = channels.find(c => c.id === channelId);
         if (chan) {
           setSelectedChannel(chan);
-          setActiveView('live');
-          // Update tab to match the source of the linked channel for consistency
           setActiveTab(chan.source);
+          setActiveView('live');
         }
       }
     }
-  }, [channels, isLoading]); // Re-run when channels list is updated or loading finished
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 1024) setSidebarOpen(true);
-      else setSidebarOpen(false);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [channels, isLoading]);
 
   const toggleFavorite = (channel: Channel) => {
     setFavorites(prev => {
@@ -76,49 +65,34 @@ const App = () => {
 
   const isFavorite = (channel: Channel) => favorites.some(f => f.url === channel.url);
 
-  // MULTI-USER FIX: Randomize proxy rotation to avoid shared rate limits
   const fetchWithFallback = async (url: string): Promise<string> => {
     if (!url) return '';
-    let lastError = null;
-    
-    // Shuffle proxies for this specific request
     const shuffledProxies = [...PROXY_OPTIONS].sort(() => Math.random() - 0.5);
-
     for (const proxy of shuffledProxies) {
       try {
         const finalUrl = proxy === 'DIRECT' ? url : `${proxy}${encodeURIComponent(url)}`;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // Faster timeout to rotate proxies
-        
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
         const res = await fetch(finalUrl, { signal: controller.signal });
         clearTimeout(timeoutId);
-
         if (!res.ok) continue;
         let text = await res.text();
-        
-        // Handle JSON envelopes from AllOrigins
         if (proxy.includes('allorigins') && !text.includes('#EXTM3U')) {
-          try { 
-            const json = JSON.parse(text); 
-            text = json.contents || text; 
-          } catch(e) {}
+          try { const json = JSON.parse(text); text = json.contents || text; } catch(e) {}
         }
-        
         if (text && (text.includes('#EXTM3U') || text.includes('#EXTINF'))) return text;
-      } catch (e) { 
-        lastError = e; 
-      }
+      } catch (e) {}
     }
-    throw lastError || new Error("All uplinks congested.");
+    return '';
   };
 
-  const loadAllFeeds = useCallback(async (isInitial = false) => {
-    if (isInitial) setTimeout(() => setIsLoading(false), 1500);
+  const loadAllFeeds = React.useCallback(async (isInitial = false) => {
+    if (isInitial) setTimeout(() => setIsLoading(false), 2000);
     else setIsRefreshing(true);
     
-    // Concurrent fetching for better performance
-    await Promise.allSettled(DEFAULT_PLAYLISTS.map(async (p) => {
+    DEFAULT_PLAYLISTS.forEach(async (p) => {
       if (!p.url) return;
+      setLoadingSources(prev => new Set(prev).add(p.name));
       try {
         const text = await fetchWithFallback(p.url);
         const parsed = parseM3U(text, p.name);
@@ -128,208 +102,240 @@ const App = () => {
             return [...otherSources, ...parsed];
           });
         }
-      } catch (e) {}
-    }));
+      } catch (e) {
+        console.error(`Failed to load ${p.name}`);
+      } finally {
+        setLoadingSources(prev => {
+          const next = new Set(prev);
+          next.delete(p.name);
+          return next;
+        });
+      }
+    });
 
     if (!isInitial) setIsRefreshing(false);
   }, []);
 
-  useEffect(() => { loadAllFeeds(true); }, [loadAllFeeds]);
+  React.useEffect(() => { loadAllFeeds(true); }, [loadAllFeeds]);
 
-  const filteredChannels = useMemo(() => {
-    const list = activeView === 'favorites' ? favorites : channels.filter(c => c.source === activeTab);
+  const filteredChannels = React.useMemo(() => {
+    let list = channels;
+    if (activeView === 'favorites') list = favorites;
+    else if (activeTab) list = channels.filter(c => c.source === activeTab);
+    
     return list.filter(c => 
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       c.group.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [channels, activeTab, searchTerm, activeView, favorites]);
 
+  const currentChannelsSlice = React.useMemo(() => {
+    return filteredChannels.slice(0, visibleCount);
+  }, [filteredChannels, visibleCount]);
+
   const handleChannelSelect = (channel: Channel) => {
     setSelectedChannel(channel);
     setActiveView('live');
-    if (window.innerWidth < 1024) setSidebarOpen(false);
-    
-    // Update URL without refreshing to allow sharing current signal
     const newUrl = `${window.location.origin}${window.location.pathname}?channel=${channel.id}`;
     window.history.pushState({ path: newUrl }, '', newUrl);
   };
 
   const handleSourceSelect = (sourceName: string) => {
     setActiveTab(sourceName);
-    setActiveView('live');
     setSelectedChannel(null);
+    setActiveView('live');
+    setVisibleCount(CHANNELS_PER_PAGE);
   };
-
-  const handleShare = async () => {
-    if (!selectedChannel) return;
-    const shareUrl = `${window.location.origin}${window.location.pathname}?channel=${selectedChannel.id}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `Kairo 4K - Signal: ${selectedChannel.name}`,
-          text: `Streaming ${selectedChannel.name} live. Join the uplink:`,
-          url: shareUrl
-        });
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
-        setShowShareToast(true);
-        setTimeout(() => setShowShareToast(false), 3000);
-      }
-    } catch (e) {}
-  };
-
-  const toggleTheater = () => setIsTheater(prev => !prev);
 
   if (isLoading) return <LoadingScreen />;
 
   return (
-    <div className="flex h-screen bg-[#020617] text-slate-100 overflow-hidden relative selection:bg-indigo-500/30">
+    <div className="flex flex-col h-screen bg-[#020617] text-slate-100 overflow-hidden relative">
       
-      {sidebarOpen && !isTheater && window.innerWidth < 1024 && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60]" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      <Sidebar 
-        isOpen={sidebarOpen}
+      <Header 
         isTheater={isTheater}
-        onClose={() => setSidebarOpen(false)}
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        availableSources={availableSources}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        channels={filteredChannels}
-        selectedChannelId={selectedChannel?.id}
-        onChannelSelect={handleChannelSelect}
-        toggleFavorite={toggleFavorite}
-        isFavorite={isFavorite}
-        activeView={activeView}
+        sidebarOpen={sidebarOpen}
+        onSidebarToggle={setSidebarOpen}
+        title={activeView === 'account' ? 'Operator' : activeView === 'favorites' ? 'Priority' : (selectedChannel?.name || activeTab || 'Hub')}
+        isRefreshing={isRefreshing}
+        onRefresh={() => loadAllFeeds()}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
-        <Header 
+      <div className="flex flex-1 min-h-0 relative">
+        <Sidebar 
+          isOpen={sidebarOpen}
           isTheater={isTheater}
-          sidebarOpen={sidebarOpen}
-          onSidebarToggle={setSidebarOpen}
-          title={activeView === 'account' ? 'Uplink Operator' : activeView === 'favorites' ? 'Priority Signals' : (selectedChannel?.name || 'Signal Node')}
-          isRefreshing={isRefreshing}
-          onRefresh={() => loadAllFeeds()}
+          activeView={activeView}
+          onViewChange={setActiveView}
+          onHubClick={() => { setActiveTab(null); setSelectedChannel(null); setActiveView('live'); }}
+          availableSources={availableSources}
+          activeTab={activeTab}
+          onSourceSelect={handleSourceSelect}
+          onClose={() => setSidebarOpen(false)}
+          channels={channels}
+          onChannelSelect={handleChannelSelect}
         />
 
-        {/* MOBILE SCROLL FIX: Parent is overflow-y-auto */}
-        <main className={`flex-1 overflow-y-auto pb-32 lg:pb-8 relative transition-all duration-700 ${isTheater ? 'p-0' : 'p-0 md:p-8 lg:p-12'} no-scrollbar`}>
+        <main className={`flex-1 overflow-y-auto pb-32 lg:pb-8 relative transition-all duration-700 ${isTheater ? 'p-0' : 'p-4 md:p-8 lg:p-10'} no-scrollbar bg-slate-950/20`}>
           
           {activeView === 'account' && (
-            <div className="max-w-4xl mx-auto space-y-8 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-slate-900/40 border border-white/5 p-8 rounded-[2.5rem] backdrop-blur-3xl">
-                <div className="flex flex-col md:flex-row items-center space-y-6 md:space-y-0 md:space-x-8">
-                  <div className="w-24 h-24 bg-indigo-600 rounded-[2rem] flex items-center justify-center text-3xl font-black shadow-2xl">K</div>
-                  <div className="text-center md:text-left">
-                    <h2 className="text-3xl md:text-5xl font-black tracking-tighter uppercase italic">Signal Operator</h2>
-                    <p className="text-indigo-400 font-bold uppercase tracking-widest text-xs mt-2">Access Level: Premium | Node Status: Verified</p>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-slate-900/40 border border-white/5 p-8 rounded-[2rem] space-y-2">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Total Signal Nodes</h4>
-                  <div className="text-4xl font-black">{channels.length}</div>
-                </div>
-                <div className="bg-slate-900/40 border border-white/5 p-8 rounded-[2rem] space-y-2">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Priority Saves</h4>
-                  <div className="text-4xl font-black">{favorites.length}</div>
+            <div className="max-w-4xl mx-auto space-y-8 p-4 animate-in fade-in zoom-in-95">
+              <div className="bg-slate-900/60 border border-white/10 p-8 md:p-12 rounded-[2rem] md:rounded-[3.5rem] backdrop-blur-3xl flex flex-col md:flex-row items-center space-y-6 md:space-y-0 md:space-x-12 shadow-2xl">
+                <div className="w-20 h-20 bg-indigo-600 rounded-2xl flex items-center justify-center text-3xl font-black shadow-xl border border-indigo-400/30">K</div>
+                <div className="text-center md:text-left">
+                  <h2 className="text-3xl md:text-5xl font-black tracking-tighter uppercase italic leading-none">Operator</h2>
+                  <p className="text-indigo-400 font-bold uppercase tracking-[0.4em] text-[10px] mt-3">Connection: Secure</p>
                 </div>
               </div>
             </div>
           )}
 
           {activeView === 'favorites' && (
-            <div className="max-w-6xl mx-auto space-y-8 p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <h2 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none">Priority Signals</h2>
+            <div className="max-w-7xl mx-auto space-y-8 md:space-y-12 p-4 animate-in fade-in slide-in-from-bottom-6">
+               <h2 className="text-4xl md:text-6xl lg:text-8xl font-black italic tracking-tighter uppercase leading-none">Priority</h2>
                {favorites.length > 0 ? (
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
                     {favorites.map(fav => (
-                      <button key={fav.id} onClick={() => handleChannelSelect(fav)} className="group bg-slate-900/40 border border-white/5 p-6 rounded-[2rem] hover:bg-indigo-600/10 hover:border-indigo-500/30 transition-all text-left relative overflow-hidden">
-                        <img src={fav.logo} className="w-12 h-12 object-contain bg-black rounded-xl p-2 mb-4" onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(fav.name)}`} />
-                        <h4 className="text-lg font-black uppercase text-white truncate">{fav.name}</h4>
-                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{fav.source}</p>
+                      <button 
+                        key={fav.id} 
+                        onClick={() => handleChannelSelect(fav)} 
+                        className="group relative bg-slate-900/40 border border-white/5 p-6 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] hover:scale-[1.05] transition-all text-left overflow-hidden shadow-lg h-44 md:h-60"
+                      >
+                         <div 
+                           className="absolute inset-0 opacity-15 grayscale blur-[1px] scale-110 group-hover:opacity-40 transition-opacity" 
+                           style={{ backgroundImage: `url(${fav.logo})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                         />
+                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+                         <div className="relative z-10 h-full flex flex-col justify-between">
+                            <img src={fav.logo} className="w-10 h-10 md:w-16 md:h-16 object-contain bg-black/40 rounded-xl p-2 mb-4 shadow-xl border border-white/10" alt={fav.name} onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(fav.name)}`} />
+                            <div>
+                                <h4 className="text-[10px] md:text-sm font-black uppercase text-white truncate drop-shadow-md">{fav.name}</h4>
+                                <p className="text-[7px] md:text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{fav.source}</p>
+                            </div>
+                         </div>
                       </button>
                     ))}
                  </div>
                ) : (
-                 <div className="py-24 text-center text-slate-500 uppercase font-black text-xs tracking-widest bg-slate-900/20 border border-dashed border-white/5 rounded-[3rem]">No priority signals locked in.</div>
+                 <div className="py-24 text-center text-slate-700 uppercase font-black text-[10px] tracking-[0.6em] bg-slate-900/10 border border-dashed border-white/10 rounded-[3rem]">No Locked Frequencies</div>
                )}
             </div>
           )}
 
           {activeView === 'live' && (
-            <div className={`mx-auto w-full transition-all duration-700 ${isTheater ? 'max-w-full h-full' : 'max-w-5xl'}`}>
+            <div className={`mx-auto w-full transition-all duration-700 ${isTheater ? 'max-w-full h-full' : 'max-w-7xl'}`}>
               {selectedChannel ? (
                 <div className="flex flex-col">
-                  {/* STICKY VIDEO FIX: sticky on mobile, relative on desktop */}
-                  <div className={`
-                    z-[40] transition-all duration-700 bg-[#020617]
-                    ${isTheater ? 'w-full h-full' : 'sticky top-0 md:relative md:rounded-[3rem] overflow-hidden shadow-2xl ring-1 ring-white/10'}
-                  `}>
-                    <VideoPlayer url={selectedChannel.url} poster={selectedChannel.logo} isTheater={isTheater} onToggleTheater={toggleTheater} channelName={selectedChannel.name} />
+                  <div className={`z-[40] bg-slate-950 transition-all duration-700 ${isTheater ? 'w-full h-full' : 'sticky top-0 md:relative md:rounded-[2rem] lg:rounded-[3rem] overflow-hidden shadow-2xl ring-1 ring-white/10 mb-6 md:mb-10'}`}>
+                    <VideoPlayer url={selectedChannel.url} poster={selectedChannel.logo} isTheater={isTheater} onToggleTheater={() => setIsTheater(!isTheater)} channelName={selectedChannel.name} />
                   </div>
 
                   {!isTheater && (
-                    <div className="p-6 md:p-0 md:mt-12 space-y-12 animate-in fade-in duration-700">
-                      <div className="p-8 md:p-12 bg-slate-900/40 border border-white/5 rounded-[2.5rem] backdrop-blur-3xl">
-                        <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-10">
-                          <img src={selectedChannel.logo} className="w-24 h-24 md:w-32 md:h-32 object-contain p-4 bg-slate-950 rounded-[2rem] border border-white/10 shadow-2xl" alt="" onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(selectedChannel.name)}`} />
-                          <div className="flex-1 text-center md:text-left space-y-4">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                              <h3 className="text-3xl md:text-5xl font-black tracking-tighter uppercase text-white truncate">{selectedChannel.name}</h3>
-                              <div className="flex items-center justify-center space-x-2">
-                                <button onClick={() => toggleFavorite(selectedChannel)} className={`p-4 rounded-2xl border transition-all active:scale-90 ${isFavorite(selectedChannel) ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'}`}>
-                                  <svg className="w-5 h-5" fill={isFavorite(selectedChannel) ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.382-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" strokeWidth={2}/></svg>
-                                </button>
-                                <button onClick={handleShare} className="p-4 bg-indigo-600/20 border border-indigo-500/30 rounded-2xl text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all active:scale-90">
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                </button>
-                              </div>
-                            </div>
-                            <div className="flex justify-center md:justify-start gap-2">
-                               <span className="bg-indigo-500/10 text-indigo-400 px-3 py-1.5 rounded-full text-[9px] font-black border border-indigo-500/20 uppercase tracking-[0.2em]">{selectedChannel.source}</span>
-                               <span className="bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-full text-[9px] font-black border border-emerald-500/20 uppercase tracking-[0.2em]">Signal: Online</span>
-                            </div>
+                    <div className="p-2 md:p-0 space-y-8 animate-in fade-in slide-in-from-bottom-8">
+                      <div className="p-6 md:p-10 lg:p-14 bg-slate-900/40 border border-white/5 rounded-[2rem] md:rounded-[4rem] backdrop-blur-3xl flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-12">
+                        <img src={selectedChannel.logo} className="w-24 h-24 md:w-32 md:h-32 lg:w-44 lg:h-44 object-contain p-4 md:p-6 bg-slate-950 rounded-[1.5rem] md:rounded-[3rem] border border-white/10 shadow-xl" alt={selectedChannel.name} onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(selectedChannel.name)}`} />
+                        <div className="flex-1 text-center md:text-left space-y-4 md:space-y-6">
+                          <h3 className="text-3xl md:text-5xl lg:text-7xl font-black tracking-tighter uppercase text-white leading-tight">{selectedChannel.name}</h3>
+                          <div className="flex flex-wrap justify-center md:justify-start gap-3 md:gap-4">
+                             <span className="bg-indigo-500/10 text-indigo-400 px-4 py-2 md:px-6 md:py-3 rounded-full text-[10px] font-black border border-indigo-500/20 uppercase tracking-[0.3em]">{selectedChannel.source}</span>
+                             <button onClick={() => toggleFavorite(selectedChannel)} className={`px-4 py-2 md:px-6 md:py-3 rounded-full text-[10px] font-black border uppercase tracking-[0.3em] transition-all ${isFavorite(selectedChannel) ? 'bg-indigo-600 border-indigo-400 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)]' : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'}`}>
+                               {isFavorite(selectedChannel) ? 'LOCKED' : 'PRIORITY'}
+                             </button>
                           </div>
-                        </div>
-                      </div>
-                      
-                      <div className="p-8 md:p-12 bg-slate-900/40 border border-white/5 rounded-[2.5rem] space-y-8 shadow-inner">
-                        <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-400">Node Frequencies</h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                          {channels.slice(0, 8).map(c => (
-                            <button key={c.id} onClick={() => handleChannelSelect(c)} className="group p-5 bg-black/40 rounded-3xl border border-white/5 hover:border-indigo-500/30 transition-all text-center space-y-3">
-                              <img src={c.logo} className="w-10 h-10 mx-auto object-contain transition-transform group-hover:scale-110" onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(c.name)}`} />
-                              <p className="text-[9px] font-black uppercase truncate text-slate-400 group-hover:text-white transition-colors">{c.name}</p>
-                            </button>
-                          ))}
                         </div>
                       </div>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center p-6 space-y-16">
-                  <div className="text-center">
-                    <div className="text-6xl md:text-8xl font-black italic tracking-tighter text-indigo-500/20 uppercase select-none">Kairo 4K</div>
-                    <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-indigo-400/60 mt-4">Premium Signal Aggregation Hub</p>
+              ) : activeTab ? (
+                <div className="p-4 md:p-0 space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-8">
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 md:gap-10">
+                    <div className="space-y-3 md:space-y-6">
+                       <button onClick={() => setActiveTab(null)} className="flex items-center space-x-3 text-indigo-400 font-black uppercase tracking-[0.3em] text-[10px] mb-4 hover:translate-x-[-8px] transition-transform group">
+                         <svg className="w-4 h-4 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={4}><path d="M15 19l-7-7 7-7" /></svg>
+                         <span>Frequency Hub</span>
+                       </button>
+                       <h2 className="text-4xl md:text-6xl lg:text-8xl font-black italic tracking-tighter uppercase leading-none">{activeTab}</h2>
+                       {loadingSources.has(activeTab) && (
+                         <div className="flex items-center space-x-3 animate-pulse">
+                           <div className="w-2 h-2 bg-indigo-500 rounded-full" />
+                           <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] text-[9px]">Scanning Node...</p>
+                         </div>
+                       )}
+                    </div>
+                    <div className="relative w-full max-w-sm">
+                      <input 
+                        type="text" 
+                        placeholder="FILTER NODE..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-slate-900/60 border border-white/10 rounded-2xl px-6 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      />
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
+                  
+                  {filteredChannels.length === 0 && !loadingSources.has(activeTab) ? (
+                    <div className="py-24 text-center text-slate-700 uppercase font-black text-[10px] tracking-[0.6em] bg-slate-900/10 border border-dashed border-white/10 rounded-[3rem]">No Signals Detected</div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+                      {currentChannelsSlice.map(channel => (
+                        <button 
+                          key={channel.id} 
+                          onClick={() => handleChannelSelect(channel)} 
+                          className="group relative rounded-[1.5rem] md:rounded-[2.5rem] transition-all text-left overflow-hidden shadow-lg border border-white/5 h-44 md:h-60"
+                        >
+                           <div 
+                              className="absolute inset-0 opacity-10 grayscale scale-110 group-hover:scale-125 group-hover:opacity-30 transition-all duration-700"
+                              style={{ backgroundImage: `url(${channel.logo})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                           />
+                           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+                           
+                           <div className="relative z-10 h-full flex flex-col justify-between p-6">
+                              <div className="w-10 h-10 md:w-14 md:h-14 bg-black/40 rounded-xl p-2 border border-white/10 flex items-center justify-center overflow-hidden">
+                                <img src={channel.logo} className="w-full h-full object-contain" alt="" onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(channel.name)}`} />
+                              </div>
+                              <div>
+                                <h4 className="text-[10px] md:text-sm font-black uppercase text-white leading-tight mb-1 truncate drop-shadow-lg">{channel.name}</h4>
+                                <p className="text-[7px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">{channel.group}</p>
+                              </div>
+                           </div>
+                           <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/5 transition-colors pointer-events-none" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {visibleCount < filteredChannels.length && (
+                    <div className="flex justify-center pt-10 md:pt-16">
+                      <button 
+                        onClick={() => setVisibleCount(prev => prev + CHANNELS_PER_PAGE)}
+                        className="px-10 py-4 bg-indigo-600 rounded-full text-white font-black uppercase tracking-[0.4em] text-[10px] shadow-xl hover:scale-105 transition-all active:scale-95"
+                      >
+                        Expand Frequencies
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center p-4 space-y-16 py-20">
+                  <div className="text-center space-y-4 md:space-y-6">
+                    <div className="text-6xl md:text-8xl lg:text-[10rem] font-black italic tracking-tighter text-white uppercase select-none kairo-shimmer leading-none">Nodes</div>
+                    <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.6em] text-indigo-400/80">Select Frequency Node</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10 w-full max-w-6xl">
                     {availableSources.map(name => (
-                      <button key={name} onClick={() => handleSourceSelect(name)} className="group relative p-10 bg-slate-900/40 border border-white/5 rounded-[2.5rem] hover:bg-indigo-600/10 hover:border-indigo-500/30 transition-all text-left overflow-hidden shadow-2xl">
+                      <button key={name} onClick={() => handleSourceSelect(name)} className="group relative p-8 md:p-12 bg-slate-900/40 border border-white/10 rounded-[2rem] md:rounded-[3.5rem] hover:bg-indigo-600/20 hover:border-indigo-500/40 hover:scale-[1.05] transition-all text-left overflow-hidden shadow-xl">
                         <div className="relative z-10">
-                          <div className="w-14 h-14 bg-indigo-600/10 rounded-2xl flex items-center justify-center mb-8 border border-indigo-500/20 text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-lg">
-                            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth={2.5}/></svg>
+                          <div className="w-16 h-16 md:w-20 md:h-20 bg-indigo-600/30 rounded-[1.2rem] md:rounded-[2rem] flex items-center justify-center mb-8 md:mb-12 border border-indigo-500/40 text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-lg">
+                            <svg className="w-8 h-8 md:w-10 md:h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                           </div>
-                          <h4 className="text-2xl font-black uppercase text-white group-hover:text-indigo-400 transition-colors leading-none">{name}</h4>
-                          <p className="text-[10px] font-bold text-slate-500 uppercase mt-4 tracking-widest">Connect to frequency</p>
+                          <h4 className="text-2xl md:text-3xl font-black uppercase text-white leading-none mb-4 group-hover:text-indigo-400 transition-colors">{name}</h4>
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-2 h-2 rounded-full ${loadingSources.has(name) ? 'bg-indigo-500 animate-pulse' : 'bg-emerald-500'}`} />
+                            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.3em]">{loadingSources.has(name) ? 'Scanning...' : 'Ready'}</p>
+                          </div>
                         </div>
-                        <div className="absolute -right-6 -bottom-6 text-[10rem] font-black text-white/5 uppercase italic group-hover:text-indigo-500/10 transition-colors">{name[0]}</div>
+                        <div className="absolute -right-8 -bottom-8 text-[12rem] md:text-[18rem] font-black text-white/5 uppercase italic group-hover:text-indigo-500/10 transition-all select-none">{name[0]}</div>
                       </button>
                     ))}
                   </div>
@@ -338,16 +344,14 @@ const App = () => {
             </div>
           )}
         </main>
-
-        <MobileNav isTheater={isTheater} activeView={activeView} onViewChange={setActiveView} onSidebarOpen={() => setSidebarOpen(true)} />
-
-        {showShareToast && (
-          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] bg-indigo-600 px-8 py-4 rounded-2xl shadow-[0_20px_60px_rgba(79,70,229,0.5)] animate-in fade-in slide-in-from-bottom-4 flex items-center space-x-3 border border-indigo-400">
-            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg>
-            <span className="text-[10px] font-black uppercase tracking-widest text-white">Frequency Link Encrypted & Copied</span>
-          </div>
-        )}
       </div>
+      
+      <MobileNav 
+        isTheater={isTheater} 
+        activeView={activeView} 
+        onViewChange={setActiveView} 
+        onSidebarOpen={() => setSidebarOpen(true)} 
+      />
     </div>
   );
 };

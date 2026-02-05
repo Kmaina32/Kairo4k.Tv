@@ -1,8 +1,8 @@
+import React from 'react';
+
 /**
  * Mobile navigation component for bottom bar interaction.
  */
-import React from 'react';
-
 interface MobileNavProps {
   isTheater: boolean;
   activeView: 'live' | 'favorites' | 'account';

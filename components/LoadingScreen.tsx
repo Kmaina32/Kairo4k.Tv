@@ -1,9 +1,9 @@
-/**
- * Loading screen component for application initialization.
- */
 import React from 'react';
 import BrandLogo from './BrandLogo';
 
+/**
+ * Loading screen component for application initialization.
+ */
 const LoadingScreen = () => {
   return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-[#020617]">
