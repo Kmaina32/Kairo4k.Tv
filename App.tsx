@@ -1,11 +1,18 @@
 
-/// <reference types="react" />
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Channel } from './types';
 import { DEFAULT_PLAYLISTS, PROXY_OPTIONS, NASA_CHANNELS } from './constants';
 import { parseM3U } from './services/m3uParser';
-import VideoPlayer from './components/VideoPlayer';
 import { getChannelInsight } from './services/geminiService';
+
+// Individual Components
+import VideoPlayer from './components/VideoPlayer';
+import Sidebar from './components/Sidebar';
+import Header from './components/Header';
+import ChannelInsight from './components/ChannelInsight';
+import LoadingScreen from './components/LoadingScreen';
+import MobileNav from './components/MobileNav';
 
 const App: React.FC = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -18,7 +25,6 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
   const [isTheater, setIsTheater] = useState(false);
   const [aiInsight, setAiInsight] = useState<string>('');
-  const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleResize = () => {
@@ -29,7 +35,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Use Gemini to get insight whenever the selected channel changes
   useEffect(() => {
     if (selectedChannel) {
       setAiInsight('Signal frequency analysis in progress...');
@@ -72,7 +77,7 @@ const App: React.FC = () => {
     try {
       const results = await Promise.all(
         DEFAULT_PLAYLISTS.map(async (p) => {
-          if (!p.url) return []; // Skip placeholders
+          if (!p.url) return []; 
           try {
             const text = await fetchWithFallback(p.url);
             return parseM3U(text, p.name);
@@ -92,7 +97,6 @@ const App: React.FC = () => {
     } catch (err) {
       setError("Global uplink failure.");
     } finally {
-      // Artistic delay for Kairo 4k branding experience
       setTimeout(() => {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -117,7 +121,6 @@ const App: React.FC = () => {
     if (window.innerWidth < 1024) setSidebarOpen(false);
   };
 
-  // TV Optimization: Keyboard Navigation Handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSidebarOpen(prev => !prev);
@@ -130,26 +133,7 @@ const App: React.FC = () => {
   const toggleTheater = () => setIsTheater(prev => !prev);
 
   if (isLoading) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#020617]">
-        <div className="relative flex flex-col items-center">
-          <div className="text-6xl md:text-8xl font-black italic tracking-tighter text-white uppercase kairo-glow mb-2">
-            Kairo<span className="text-indigo-500">4k</span>
-          </div>
-          <div className="w-48 h-1 bg-white/5 rounded-full overflow-hidden relative">
-            <div className="absolute inset-0 bg-indigo-500 w-1/3 animate-[loading_2s_infinite_linear]"></div>
-          </div>
-          <style>{`
-            @keyframes loading {
-              0% { left: -40%; width: 30%; }
-              50% { width: 50%; }
-              100% { left: 110%; width: 30%; }
-            }
-          `}</style>
-          <p className="mt-8 text-indigo-400 font-black tracking-[0.5em] text-[10px] uppercase animate-pulse">Initializing 4K Frequency</p>
-        </div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -160,97 +144,30 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] transition-all" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar - Channel List */}
-      <aside 
-        ref={sidebarRef}
-        className={`
-        fixed inset-y-0 left-0 z-[70] w-[85vw] max-w-sm lg:static lg:translate-x-0 transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1)
-        flex flex-col border-r border-white/5 bg-slate-950/98 lg:bg-slate-950/40 backdrop-blur-3xl
-        ${sidebarOpen && !isTheater ? 'translate-x-0' : '-translate-x-full lg:w-0 lg:overflow-hidden'}
-      `}>
-        <div className="p-6 border-b border-white/5 space-y-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="text-2xl font-black italic tracking-tighter text-white uppercase">
-                Kairo<span className="text-indigo-500">4k</span>
-              </div>
-            </div>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 bg-white/5 rounded-xl text-slate-400">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2}/></svg>
-            </button>
-          </div>
+      <Sidebar 
+        isOpen={sidebarOpen}
+        isTheater={isTheater}
+        onClose={() => setSidebarOpen(false)}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        availableSources={availableSources}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        channels={filteredChannels}
+        selectedChannelId={selectedChannel?.id}
+        onChannelSelect={handleChannelSelect}
+      />
 
-          <div className="relative">
-            <input 
-              type="text" 
-              placeholder="Search frequencies..." 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-xs focus:ring-2 focus:ring-indigo-500/50 focus:outline-none transition-all placeholder:text-slate-600"
-            />
-          </div>
-
-          {/* Source Selector Chips */}
-          <div className="flex overflow-x-auto no-scrollbar space-x-2 py-1">
-            {availableSources.map(source => (
-              <button 
-                key={source} 
-                onClick={() => setActiveTab(source)}
-                className={`px-3 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all shrink-0 ${activeTab === source ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/20' : 'bg-white/5 border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/10'}`}
-              >
-                {source}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto no-scrollbar">
-          {filteredChannels.length > 0 ? filteredChannels.map((channel) => (
-            <button
-              key={channel.id}
-              onClick={() => handleChannelSelect(channel)}
-              className={`w-full text-left p-4 flex items-center space-x-4 hover:bg-white/5 transition-all border-l-2 group ${selectedChannel?.id === channel.id ? 'bg-indigo-600/10 border-indigo-500' : 'border-transparent'}`}
-            >
-              <div className="w-10 h-10 bg-slate-900 rounded-lg flex-shrink-0 flex items-center justify-center border border-white/5 overflow-hidden group-hover:border-indigo-500/30 transition-all">
-                <img src={channel.logo} className="w-full h-full object-contain p-1" alt="" onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(channel.name)}`} />
-              </div>
-              <div className="min-w-0">
-                <p className={`text-xs font-bold truncate tracking-tight ${selectedChannel?.id === channel.id ? 'text-indigo-400' : 'text-slate-300'}`}>{channel.name}</p>
-                <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest truncate mt-0.5">{channel.group}</p>
-              </div>
-            </button>
-          )) : (
-            <div className="p-12 text-center opacity-20">
-               <p className="text-[10px] font-black uppercase tracking-[0.2em]">Zero signals in node</p>
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* Main Bridge */}
+      {/* Main Signal Bridge */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
-        <header className={`h-16 flex-shrink-0 border-b border-white/5 flex items-center justify-between px-6 bg-slate-950/50 backdrop-blur-xl z-50 transition-all duration-500 ${isTheater ? 'opacity-0 h-0 pointer-events-none overflow-hidden' : ''}`}>
-          <div className="flex items-center space-x-3 min-w-0">
-            {!sidebarOpen && (
-              <button onClick={() => setSidebarOpen(true)} className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg active:scale-95 transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M4 6h16M4 12h16M4 18h16" /></svg>
-              </button>
-            )}
-            <h2 className="text-sm font-black uppercase tracking-tight truncate pr-4">{selectedChannel?.name || 'Kairo Uplink Ready'}</h2>
-          </div>
-          <div className="flex items-center space-x-4">
-             {isRefreshing && (
-               <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-             )}
-            <button 
-              onClick={() => loadAllFeeds()} 
-              disabled={isRefreshing}
-              className={`p-2 text-slate-500 hover:text-white transition-all active:rotate-180 duration-500 ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-            </button>
-          </div>
-        </header>
+        <Header 
+          isTheater={isTheater}
+          sidebarOpen={sidebarOpen}
+          onSidebarToggle={setSidebarOpen}
+          title={selectedChannel?.name || 'Kairo Uplink Ready'}
+          isRefreshing={isRefreshing}
+          onRefresh={() => loadAllFeeds()}
+        />
 
         <main className={`flex-1 overflow-y-auto pb-24 lg:pb-8 relative transition-all duration-700 ${isTheater ? 'p-0' : 'p-4 md:p-8 lg:p-12'}`}>
           {selectedChannel ? (
@@ -263,6 +180,7 @@ const App: React.FC = () => {
                   onToggleTheater={toggleTheater} 
                 />
               </div>
+              
               {!isTheater && (
                 <div className="p-8 md:p-12 bg-slate-900/40 border border-white/5 rounded-[2.5rem] backdrop-blur-3xl animate-in fade-in slide-in-from-bottom-5 duration-700">
                    <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-10">
@@ -276,16 +194,7 @@ const App: React.FC = () => {
                           <span className="bg-emerald-500/10 text-emerald-400 px-4 py-1.5 rounded-full text-[10px] font-black border border-emerald-500/20 uppercase tracking-[0.2em]">4K Ultra Signal</span>
                         </div>
                         
-                        {/* Gemini AI Insight Section */}
-                        {aiInsight && (
-                          <div className="mt-8 p-6 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl text-left">
-                            <div className="flex items-center space-x-2 mb-3">
-                              <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Gemini AI Frequency Analysis</span>
-                            </div>
-                            <p className="text-xs text-slate-300 leading-relaxed italic">{aiInsight}</p>
-                          </div>
-                        )}
+                        <ChannelInsight insight={aiInsight} />
                       </div>
                    </div>
                 </div>
@@ -299,25 +208,13 @@ const App: React.FC = () => {
           )}
         </main>
 
-        {/* Mobile Bottom Bar */}
-        {!isTheater && (
-          <nav className="lg:hidden fixed bottom-0 inset-x-0 h-20 bg-slate-950/95 border-t border-white/5 backdrop-blur-3xl flex items-center justify-around px-4 z-[55] shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-            {availableSources.slice(0, 4).map(source => (
-              <button 
-                key={source} 
-                onClick={() => setActiveTab(source)}
-                className={`flex flex-col items-center space-y-1.5 p-2 transition-all relative ${activeTab === source ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}
-              >
-                <span className="text-[8px] font-black uppercase tracking-widest leading-none">{source.split(' ')[0]}</span>
-              </button>
-            ))}
-            <button onClick={() => setSidebarOpen(true)} className="flex flex-col items-center space-y-1 p-2 text-indigo-500 active:scale-90 transition-all">
-              <div className="w-8 h-8 bg-indigo-600/10 rounded-lg flex items-center justify-center border border-indigo-500/20">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}><path d="M4 6h16M4 12h16M4 18h16" /></svg>
-              </div>
-            </button>
-          </nav>
-        )}
+        <MobileNav 
+          isTheater={isTheater}
+          availableSources={availableSources}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onSidebarOpen={() => setSidebarOpen(true)}
+        />
       </div>
     </div>
   );
