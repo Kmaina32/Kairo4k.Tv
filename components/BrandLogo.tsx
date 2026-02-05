@@ -1,4 +1,4 @@
-/// <reference types="react" />
+// Changed React import to import * as React to ensure the JSX namespace and IntrinsicElements are correctly resolved.
 import * as React from 'react';
 
 interface BrandLogoProps {

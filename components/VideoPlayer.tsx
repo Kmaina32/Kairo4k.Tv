@@ -1,4 +1,4 @@
-/// <reference types="react" />
+// Changed React import to import * as React to ensure the JSX namespace and IntrinsicElements are correctly resolved.
 import * as React from 'react';
 import BrandLogo from './BrandLogo';
 
@@ -277,7 +277,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
       ref={containerRef}
       className={`
         relative w-full overflow-hidden bg-black group select-none transition-all duration-700
-        ${isTheater ? 'h-full flex items-center bg-black' : 'aspect-video rounded-2xl md:rounded-[3rem] shadow-2xl ring-1 ring-white/10'}
+        ${isTheater ? 'h-full flex items-center bg-black' : 'aspect-[4/3] sm:aspect-video rounded-xl md:rounded-[3rem] shadow-2xl ring-1 ring-white/10'}
       `}
       onMouseMove={resetControlsTimeout}
       onMouseLeave={() => {
@@ -295,39 +295,34 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         playsInline
       />
 
-      {/* App Name Overlay (Top Left) - High Visibility */}
-      <div className={`absolute top-6 left-8 md:top-8 md:left-12 pointer-events-none transition-opacity duration-500 z-[60] ${showControls ? 'opacity-100' : 'opacity-90'}`}>
+      <div className={`absolute top-4 left-6 md:top-8 md:left-12 pointer-events-none transition-opacity duration-500 z-[60] ${showControls ? 'opacity-100' : 'opacity-90'}`}>
         <BrandLogo size="sm" className="drop-shadow-[0_4px_12px_rgba(0,0,0,1)]" />
       </div>
 
-      {/* Recording Indicator */}
       {isRecording && (
-        <div className="absolute top-6 right-8 md:top-8 md:right-12 flex items-center space-x-2 bg-red-600/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-red-500/30 animate-pulse z-[60]">
+        <div className="absolute top-4 right-6 md:top-8 md:right-12 flex items-center space-x-2 bg-red-600/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-red-500/30 animate-pulse z-[60]">
           <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Rec. Uplink</span>
+          <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500">Rec. Uplink</span>
         </div>
       )}
 
-      {/* Center Play Overlay - Fixed Rendering to match image */}
       {!isPlaying && (
         <div 
           className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px] cursor-pointer z-40"
           onClick={togglePlay}
         >
-          <div className="w-20 h-20 md:w-24 md:h-24 bg-[#5456f1] rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(84,86,241,0.5)] transform hover:scale-110 transition-all duration-300">
-            <svg className="w-10 h-10 md:w-12 md:h-12 text-white fill-white translate-x-1" viewBox="0 0 24 24">
+          <div className="w-16 h-16 md:w-24 md:h-24 bg-[#5456f1] rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(84,86,241,0.5)] transform hover:scale-110 transition-all duration-300">
+            <svg className="w-8 h-8 md:w-12 md:h-12 text-white fill-white translate-x-1" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z"/>
             </svg>
           </div>
         </div>
       )}
 
-      {/* Control Interface */}
       <div className={`
-        absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent pt-12 md:pt-20 pb-4 md:pb-10 transition-all duration-500 z-50
+        absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent pt-8 md:pt-20 pb-4 md:pb-10 transition-all duration-500 z-50
         ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 md:translate-y-8 pointer-events-none'}
       `}>
-        {/* Progress Bar Container */}
         <div className="px-4 md:px-10 group/seek">
           <input
             type="range"
@@ -340,7 +335,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         </div>
 
         <div className="flex items-center justify-between px-4 md:px-10 mt-2 md:mt-4">
-          {/* Left Controls: Play, Volume, Time */}
           <div className="flex items-center space-x-2 md:space-x-8">
             <button onClick={togglePlay} className="text-white hover:text-indigo-400 transition-all active:scale-90 p-1 md:p-2">
               {isPlaying ? (
@@ -365,7 +359,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-12 md:w-0 md:group-hover/volume:w-32 transition-all duration-500 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-indigo-500"
+                className="w-10 md:w-0 md:group-hover/volume:w-32 transition-all duration-500 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-indigo-500"
               />
             </div>
 
@@ -374,10 +368,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
             </div>
           </div>
 
-          {/* Right Controls: Quality, Speed, Share, Rec, Pip, Theater, Full */}
           <div className="flex items-center space-x-1 md:space-x-4">
-            
-            {/* Quality Menu */}
             {levels.length > 0 && (
               <div className="relative">
                 <button 
@@ -414,7 +405,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
               </div>
             )}
 
-            {/* Speed Menu */}
             <div className="relative">
               <button 
                 onClick={() => {

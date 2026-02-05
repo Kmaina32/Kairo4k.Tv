@@ -29,6 +29,36 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
     type: 'Featured'
   },
   {
+    name: 'Vizio',
+    url: 'https://www.apsattv.com/vizio.m3u',
+    type: 'Vizio'
+  },
+  {
+    name: 'Local Now',
+    url: 'https://www.apsattv.com/localnow.m3u',
+    type: 'Local'
+  },
+  {
+    name: 'Tablo',
+    url: 'https://www.apsattv.com/tablo.m3u',
+    type: 'Tablo'
+  },
+  {
+    name: 'Xiaomi',
+    url: 'https://www.apsattv.com/xiaomi.m3u',
+    type: 'Xiaomi'
+  },
+  {
+    name: 'Fire TV',
+    url: 'https://www.apsattv.com/firetv.m3u',
+    type: 'FireTV'
+  },
+  {
+    name: 'Xumo',
+    url: 'https://www.apsattv.com/xumo.m3u',
+    type: 'Xumo'
+  },
+  {
     name: 'Roku',
     url: 'https://www.apsattv.com/rok.m3u',
     type: 'Roku'
@@ -37,6 +67,11 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
     name: 'Redbox',
     url: 'https://www.apsattv.com/redbox.m3u',
     type: 'Redbox'
+  },
+  {
+    name: 'Global Index',
+    url: 'https://iptv-org.github.io/iptv/index.m3u',
+    type: 'Global'
   },
   {
     name: 'Global News',
