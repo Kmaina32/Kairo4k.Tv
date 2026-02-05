@@ -13,61 +13,69 @@ interface VideoPlayerProps {
   onToggleTheater: () => void;
 }
 
+const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onToggleTheater }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
-  const [isPipAvailable, setIsPipAvailable] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const controlsTimeoutRef = useRef<number | null>(null);
 
   const resetControlsTimeout = useCallback(() => {
-    if (isLocked && isPlaying) {
-        setShowControls(false);
-        return;
-    }
     setShowControls(true);
     if (controlsTimeoutRef.current) {
       window.clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = window.setTimeout(() => {
-      if (isPlaying) setShowControls(false);
-    }, 4000);
-  }, [isPlaying, isLocked]);
+      if (isPlaying && !showSpeedMenu) setShowControls(false);
+    }, 3000);
+  }, [isPlaying, showSpeedMenu]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    if (window.Hls && window.Hls.isSupported()) {
-      const hls = new window.Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        capLevelToPlayerSize: true,
-      });
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-        video.play().catch(e => console.log("HLS stream auto-play caught", e));
-      });
-      return () => hls.destroy();
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = url;
-    }
+    let hls: any = null;
 
-    setIsPipAvailable(document.pictureInPictureEnabled);
+    const initPlayer = () => {
+      if (window.Hls && window.Hls.isSupported()) {
+        hls = new window.Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          capLevelToPlayerSize: true,
+        });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {});
+          setIsPlaying(true);
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
+        video.addEventListener('loadedmetadata', () => {
+          video.play().catch(() => {});
+          setIsPlaying(true);
+        });
+      }
+    };
+
+    initPlayer();
+
+    return () => {
+      if (hls) hls.destroy();
+    };
   }, [url]);
 
   const togglePlay = () => {
-    if (isLocked) {
-        resetControlsTimeout();
-        return;
-    }
     if (videoRef.current) {
       if (videoRef.current.paused) {
         videoRef.current.play();
@@ -95,7 +103,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
       const newMuted = !isMuted;
       setIsMuted(newMuted);
       videoRef.current.muted = newMuted;
-      if (!newMuted && volume === 0) setVolume(0.5);
+      if (!newMuted && volume === 0) {
+        setVolume(0.5);
+        videoRef.current.volume = 0.5;
+      }
     }
   };
 
@@ -107,6 +118,22 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
     }
   };
 
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackRate(speed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+    setShowSpeedMenu(false);
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
   const togglePip = async () => {
     try {
       if (videoRef.current !== document.pictureInPictureElement) {
@@ -114,16 +141,64 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
       } else {
         await document.exitPictureInPicture();
       }
-    } catch (error) {
-      console.error("PiP Sync Failure", error);
+    } catch (e) {
+      console.error("PiP failed", e);
     }
   };
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
+  const toggleRecording = () => {
+    if (!isRecording) {
+      startRecording();
     } else {
-      document.exitFullscreen();
+      stopRecording();
+    }
+  };
+
+  const startRecording = () => {
+    if (!videoRef.current) return;
+    try {
+      // @ts-ignore
+      const stream = videoRef.current.captureStream?.() || videoRef.current.mozCaptureStream?.();
+      if (!stream) {
+        alert("Recording not supported in this browser for this stream.");
+        return;
+      }
+
+      const options = { mimeType: 'video/webm;codecs=vp9,opus' };
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = 'video/webm';
+      }
+
+      const recorder = new MediaRecorder(stream, options);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Nexus-Record-${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Recording error:", err);
+      alert("Failed to start recording. This might be due to security (CORS) restrictions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
   };
 
@@ -157,10 +232,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
     <div 
       ref={containerRef}
       className={`
-        relative w-full overflow-hidden bg-black group select-none transition-all duration-700 ease-in-out
-        ${isTheater ? 'h-full lg:aspect-[21/9]' : 'aspect-video rounded-3xl md:rounded-[4rem] shadow-[0_40px_100px_rgba(0,0,0,0.8)] ring-1 ring-white/10'}
+        relative w-full overflow-hidden bg-black group select-none transition-all duration-700
+        ${isTheater ? 'h-full flex items-center bg-black' : 'aspect-video rounded-2xl md:rounded-[3rem] shadow-2xl ring-1 ring-white/10'}
       `}
       onMouseMove={resetControlsTimeout}
+      onMouseLeave={() => setShowControls(false)}
       onTouchStart={resetControlsTimeout}
     >
       <video
@@ -171,121 +247,121 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         playsInline
       />
 
-      {/* Interface Lock Indicator */}
-      {isLocked && showControls && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[60]">
-             <div className="bg-indigo-600/10 backdrop-blur-3xl px-10 py-5 rounded-[2.5rem] border border-indigo-500/20 text-[11px] font-black uppercase tracking-[0.6em] text-indigo-400 shadow-2xl">
-               Interface Encrypted
-             </div>
+      {/* Recording Indicator */}
+      {isRecording && (
+        <div className="absolute top-4 right-4 md:top-6 md:right-6 flex items-center space-x-2 bg-red-600/20 backdrop-blur-md px-2 py-1 md:px-3 md:py-1.5 rounded-full border border-red-500/30 animate-pulse z-[80]">
+          <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-red-500 rounded-full"></div>
+          <span className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-red-500">Rec. Uplink</span>
+        </div>
+      )}
+
+      {/* Center Play Overlay */}
+      {!isPlaying && (
+        <div 
+          className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px] cursor-pointer z-40"
+          onClick={togglePlay}
+        >
+          <div className="w-16 h-16 md:w-20 md:h-20 bg-indigo-600 rounded-full flex items-center justify-center shadow-2xl shadow-indigo-600/50 transform hover:scale-110 transition-all duration-500">
+            <svg className="w-8 h-8 md:w-10 md:h-10 text-white translate-x-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
           </div>
-      )}
-
-      {/* Central State Hint */}
-      {!showControls && !isPlaying && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[60]">
-           <div className="w-20 h-20 md:w-32 md:h-32 bg-indigo-600/20 backdrop-blur-3xl rounded-full flex items-center justify-center border border-indigo-500/30 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
-              <svg className="w-10 h-10 md:w-16 md:h-16 text-indigo-400 ml-2" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-           </div>
         </div>
       )}
 
-      {/* Glassmorphic Controls Section */}
+      {/* Control Interface */}
       <div className={`
-        absolute inset-0 bg-gradient-to-t from-black/95 via-transparent to-black/20 flex flex-col justify-end transition-all duration-500 z-[70]
-        ${showControls ? 'opacity-100' : 'opacity-0 translate-y-4 pointer-events-none'}
+        absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent pt-12 md:pt-20 pb-4 md:pb-10 transition-all duration-500 z-50
+        ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 md:translate-y-8 pointer-events-none'}
       `}>
-        
-        {/* Scrubbing System */}
-        <div className="px-6 md:px-12 mb-3">
-          {!isLocked && (
-            <input
-                type="range"
-                min="0"
-                max={duration || 0}
-                value={progress}
-                onChange={handleSeek}
-                className="w-full h-2 md:h-2.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-all shadow-inner"
-            />
-          )}
+        {/* Progress Bar Container */}
+        <div className="px-4 md:px-10 group/seek">
+          <input
+            type="range"
+            min="0"
+            max={duration || 0}
+            value={progress}
+            onChange={handleSeek}
+            className="w-full h-1 md:h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-all"
+          />
         </div>
 
-        <div className="flex items-center justify-between px-6 md:px-12 pb-8 md:pb-16 pt-2">
-          {/* Playback & Volume */}
-          <div className="flex items-center space-x-6 md:space-x-12">
-            {!isLocked && (
-              <button onClick={togglePlay} className="p-3 text-white active:scale-90 scale-125 transition-transform">
-                {isPlaying ? (
-                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                ) : (
-                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                )}
-              </button>
-            )}
-
-            <button onClick={() => setIsLocked(!isLocked)} className={`p-3 transition-all active:scale-90 ${isLocked ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'text-white/40 hover:text-white'}`}>
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d={isLocked ? "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" : "M8 11V7a4 4 0 118 0v4m-8 4h8"} />
-              </svg>
+        <div className="flex items-center justify-between px-4 md:px-10 mt-2 md:mt-4">
+          {/* Left Controls: Play, Volume, Time */}
+          <div className="flex items-center space-x-2 md:space-x-8">
+            <button onClick={togglePlay} className="text-white hover:text-indigo-400 transition-all active:scale-90 p-1 md:p-2">
+              {isPlaying ? (
+                <svg className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+              ) : (
+                <svg className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              )}
             </button>
 
-            {!isLocked && (
-                <div className="hidden sm:flex items-center space-x-6 group/volume">
-                  <button onClick={toggleMute} className="text-white hover:text-indigo-400 transition-colors">
-                    {isMuted || volume === 0 ? (
-                      <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM4.33 14.89l2.76-2.89H11V12H7.09l-2.76 2.89H4.33zm11.67 0V9.11L14.11 11H13v2h1.11l1.89 1.89zM19 12c0 4.28-2.99 7.86-7 8.77v2.06c5.13-.93 9-5.4 9-10.83s-3.87-9.9-9-10.83v2.06c4.01.91 7 4.49 7 8.77z"/></svg>
-                    ) : (
-                      <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-                    )}
-                  </button>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={isMuted ? 0 : volume}
-                    onChange={handleVolumeChange}
-                    className="w-0 group-hover/volume:w-28 transition-all duration-700 h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-indigo-400"
-                  />
-                </div>
-            )}
+            <div className="flex items-center group/volume space-x-1 md:space-x-2">
+              <button onClick={toggleMute} className="text-white/80 hover:text-white transition-all p-1 md:p-2">
+                {isMuted || volume === 0 ? (
+                  <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M5.586 15L4 13.414V10.586L5.586 9H8l4-4v14l-4-4H5.586z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                ) : (
+                  <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15L4 13.414V10.586L5.586 9H8l4-4v14l-4-4H5.586z" /></svg>
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={handleVolumeChange}
+                className="w-12 md:w-0 md:group-hover/volume:w-32 transition-all duration-500 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-indigo-500"
+              />
+            </div>
 
-            <span className="text-[11px] md:text-sm font-mono text-white/50 tracking-[0.2em] font-black uppercase">
-              {formatTime(progress)} <span className="opacity-10 mx-2">/</span> {formatTime(duration)}
-            </span>
+            <div className="text-[8px] md:text-xs font-black tracking-widest text-white/60 font-mono hidden sm:block">
+              {formatTime(progress)} <span className="opacity-20 mx-1">/</span> {formatTime(duration)}
+            </div>
           </div>
 
-          {/* Utility Controls */}
-          {!isLocked && (
-            <div className="flex items-center space-x-6 md:space-x-12">
-                {isPipAvailable && (
-                  <button onClick={togglePip} className="p-3 text-white/60 hover:text-indigo-400 active:scale-90 transition-all" title="Uplink Window">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                  </button>
-                )}
-                
-                <button onClick={onToggleTheater} className={`p-3 transition-all active:scale-90 ${isTheater ? 'text-indigo-400 scale-110 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'text-white/60 hover:text-indigo-400'}`} title="Theater Mode">
-                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path d="M4 5h16a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1zm3 4h10m-10 6h10"/></svg>
-                </button>
-
-                <button onClick={toggleFullscreen} className="p-3 text-white/60 hover:text-indigo-400 active:scale-90 transition-all" title="Global Fullscreen">
-                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"/></svg>
-                </button>
+          {/* Right Controls: Speed, Rec, Pip, Theater, Full */}
+          <div className="flex items-center space-x-1 md:space-x-4">
+            {/* Speed Menu */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white p-1 md:p-2 flex items-center space-x-0.5"
+              >
+                <span>{playbackRate}x</span>
+              </button>
+              {showSpeedMenu && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl md:rounded-2xl p-1 md:p-2 w-16 md:w-20 flex flex-col items-center animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {PLAYBACK_SPEEDS.map(speed => (
+                    <button
+                      key={speed}
+                      onClick={() => handleSpeedChange(speed)}
+                      className={`w-full py-1 md:py-1.5 text-[8px] md:text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${playbackRate === speed ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            <button onClick={toggleRecording} className={`p-1 md:p-2 transition-all active:scale-90 ${isRecording ? 'text-red-500' : 'text-white/60 hover:text-white'}`}>
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><circle cx="12" cy="12" r="3" /><path d="M12 21a9 9 0 100-18 9 9 0 000 18z" /></svg>
+            </button>
+
+            <button onClick={togglePip} className="text-white/60 hover:text-white p-1 md:p-2 hidden sm:block transition-all">
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+            </button>
+
+            <button onClick={onToggleTheater} className={`p-1 md:p-2 transition-all ${isTheater ? 'text-indigo-400' : 'text-white/60 hover:text-white'}`}>
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 12h10" /></svg>
+            </button>
+
+            <button onClick={toggleFullscreen} className="text-white/60 hover:text-white p-1 md:p-2 transition-all">
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" /></svg>
+            </button>
+          </div>
         </div>
       </div>
-
-      {/* Synchronizing Indicator */}
-      {!isPlaying && progress === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-3xl z-[80]">
-           <div className="flex flex-col items-center space-y-6">
-              <div className="w-16 h-16 border-4 border-indigo-500/10 rounded-full flex items-center justify-center">
-                 <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(99,102,241,0.4)]"></div>
-              </div>
-              <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.6em] text-indigo-400 animate-pulse">Syncing Orbital Node</p>
-           </div>
-        </div>
-      )}
     </div>
   );
 };
