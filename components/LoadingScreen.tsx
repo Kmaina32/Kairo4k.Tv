@@ -1,9 +1,10 @@
-
-// Reverted to namespace React import to fix JSX intrinsic element resolution issues in this environment.
-import * as React from 'react';
+/**
+ * Loading screen component for application initialization.
+ */
+import React from 'react';
 import BrandLogo from './BrandLogo';
 
-const LoadingScreen: React.FC = () => {
+const LoadingScreen = () => {
   return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-[#020617]">
       <div className="relative flex flex-col items-center">

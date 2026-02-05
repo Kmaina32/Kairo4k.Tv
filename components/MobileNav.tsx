@@ -1,6 +1,7 @@
-
-// Reverted to namespace React import to fix JSX intrinsic element resolution issues in this environment.
-import * as React from 'react';
+/**
+ * Mobile navigation component for bottom bar interaction.
+ */
+import React from 'react';
 
 interface MobileNavProps {
   isTheater: boolean;
@@ -9,12 +10,12 @@ interface MobileNavProps {
   onSidebarOpen: () => void;
 }
 
-const MobileNav: React.FC<MobileNavProps> = ({
+const MobileNav = ({
   isTheater,
   activeView,
   onViewChange,
   onSidebarOpen
-}) => {
+}: MobileNavProps) => {
   if (isTheater) return null;
 
   const navItems: { label: string, view: 'live' | 'favorites' | 'account', icon: React.ReactNode }[] = [

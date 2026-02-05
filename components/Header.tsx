@@ -1,6 +1,7 @@
-
-// Reverted to namespace React import to fix JSX intrinsic element resolution issues in this environment.
-import * as React from 'react';
+/**
+ * Header component for the application top bar.
+ */
+import React from 'react';
 import BrandLogo from './BrandLogo';
 
 interface HeaderProps {
@@ -12,14 +13,14 @@ interface HeaderProps {
   onRefresh: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({
+const Header = ({
   isTheater,
   sidebarOpen,
   onSidebarToggle,
   title,
   isRefreshing,
   onRefresh
-}) => {
+}: HeaderProps) => {
   return (
     <header className={`h-16 flex-shrink-0 border-b border-white/5 flex items-center justify-between px-4 md:px-6 bg-slate-950/50 backdrop-blur-xl z-50 transition-all duration-500 ${isTheater ? 'opacity-0 h-0 pointer-events-none overflow-hidden' : ''}`}>
       <div className="flex items-center space-x-3 min-w-0">

@@ -1,12 +1,13 @@
-
-// Reverted to namespace React import to fix JSX intrinsic element resolution issues in this environment.
-import * as React from 'react';
+/**
+ * Component for displaying AI-generated channel insights.
+ */
+import React from 'react';
 
 interface ChannelInsightProps {
   insight: string;
 }
 
-const ChannelInsight: React.FC<ChannelInsightProps> = ({ insight }) => {
+const ChannelInsight = ({ insight }: ChannelInsightProps) => {
   if (!insight) return null;
   
   return (

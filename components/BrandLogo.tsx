@@ -1,13 +1,14 @@
-
-// Reverted to namespace React import to fix JSX intrinsic element resolution issues in this environment.
-import * as React from 'react';
+/**
+ * Brand logo component for Kairo 4K branding.
+ */
+import React from 'react';
 
 interface BrandLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
 
-const BrandLogo: React.FC<BrandLogoProps> = ({ size = 'md', className = '' }) => {
+const BrandLogo = ({ size = 'md', className = '' }: BrandLogoProps) => {
   const sizeClasses = {
     sm: 'text-xl',
     md: 'text-2xl',
