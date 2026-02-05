@@ -1,7 +1,23 @@
 
-import { PlaylistSource } from './types';
+import { PlaylistSource, Channel } from './types';
+
+export const NASA_CHANNELS: Channel[] = [
+  {
+    id: 'nasa-tv-uhd',
+    name: 'NASA TV Public',
+    group: 'Science & Education',
+    logo: 'https://www.nasa.gov/wp-content/themes/nasa/assets/images/nasa-logo.svg',
+    url: 'http://nasatv-lh.akamaihd.net/i/NASA_101@319270/index_1000_av-p.m3u8',
+    source: 'Kairo Exclusives'
+  }
+];
 
 export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
+  {
+    name: 'Kairo Exclusives',
+    url: '', // Local injection
+    type: 'Featured'
+  },
   {
     name: 'Roku',
     url: 'https://www.apsattv.com/rok.m3u',
@@ -16,26 +32,6 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
     name: 'Distro',
     url: 'https://www.apsattv.com/distro.m3u',
     type: 'Distro'
-  },
-  {
-    name: 'Xiaomi',
-    url: 'https://www.apsattv.com/xiaomi.m3u',
-    type: 'Xiaomi'
-  },
-  {
-    name: 'Tablo',
-    url: 'https://www.apsattv.com/tablo.m3u',
-    type: 'Tablo'
-  },
-  {
-    name: 'LocalNow',
-    url: 'https://www.apsattv.com/localnow.m3u',
-    type: 'LocalNow'
-  },
-  {
-    name: 'Xumo',
-    url: 'https://www.apsattv.com/xumo.m3u',
-    type: 'Xumo'
   },
   {
     name: 'Samsung USA',

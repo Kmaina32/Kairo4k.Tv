@@ -1,6 +1,6 @@
 {
-  "name": "Gemini Stream Nexus",
-  "description": "A high-end IPTV explorer powered by Gemini AI, allowing you to browse, search, and enjoy global content from Roku and Redbox playlists with intelligent channel insights.",
+  "name": "Kairo 4k",
+  "description": "A premium 4K IPTV aggregator with intelligent signal processing and cinematic playback controls.",
   "requestFramePermissions": [
     "camera",
     "microphone"
