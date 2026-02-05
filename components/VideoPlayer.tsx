@@ -1,6 +1,8 @@
 
+// Fix: Use a more robust import pattern for React to ensure JSX intrinsic elements are recognized
 import * as React from 'react';
 import { useEffect, useRef, useState, useCallback } from 'react';
+import BrandLogo from './BrandLogo';
 
 declare global {
   interface Window {
@@ -28,7 +30,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
   const [showControls, setShowControls] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [levels, setLevels] = useState<any[]>([]);
+  const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 is Auto
+  
+  const hlsRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const controlsTimeoutRef = useRef<number | null>(null);
 
@@ -38,28 +45,34 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
       window.clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = window.setTimeout(() => {
-      if (isPlaying && !showSpeedMenu) setShowControls(false);
+      if (isPlaying && !showSpeedMenu && !showQualityMenu) setShowControls(false);
     }, 3000);
-  }, [isPlaying, showSpeedMenu]);
+  }, [isPlaying, showSpeedMenu, showQualityMenu]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    let hls: any = null;
-
     const initPlayer = () => {
       if (window.Hls && window.Hls.isSupported()) {
-        hls = new window.Hls({
+        const hls = new window.Hls({
           enableWorker: true,
           lowLatencyMode: true,
           capLevelToPlayerSize: true,
         });
+        hlsRef.current = hls;
         hls.loadSource(url);
         hls.attachMedia(video);
-        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+        
+        hls.on(window.Hls.Events.MANIFEST_PARSED, (event: any, data: any) => {
+          setLevels(hls.levels);
+          setCurrentLevel(hls.currentLevel);
           video.play().catch(() => {});
           setIsPlaying(true);
+        });
+
+        hls.on(window.Hls.Events.LEVEL_SWITCHED, (event: any, data: any) => {
+          setCurrentLevel(hls.currentLevel);
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
@@ -73,7 +86,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
     initPlayer();
 
     return () => {
-      if (hls) hls.destroy();
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
     };
   }, [url]);
 
@@ -126,6 +142,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
       videoRef.current.playbackRate = speed;
     }
     setShowSpeedMenu(false);
+  };
+
+  const handleQualityChange = (levelIndex: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = levelIndex;
+      setCurrentLevel(levelIndex);
+    }
+    setShowQualityMenu(false);
   };
 
   const toggleFullscreen = () => {
@@ -183,7 +207,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Nexus-Record-${Date.now()}.webm`;
+        a.download = `Kairo-Record-${Date.now()}.webm`;
         a.click();
         URL.revokeObjectURL(url);
       };
@@ -238,7 +262,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         ${isTheater ? 'h-full flex items-center bg-black' : 'aspect-video rounded-2xl md:rounded-[3rem] shadow-2xl ring-1 ring-white/10'}
       `}
       onMouseMove={resetControlsTimeout}
-      onMouseLeave={() => setShowControls(false)}
+      onMouseLeave={() => {
+        setShowControls(false);
+        setShowSpeedMenu(false);
+        setShowQualityMenu(false);
+      }}
       onTouchStart={resetControlsTimeout}
     >
       <video
@@ -249,11 +277,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         playsInline
       />
 
+      {/* App Name Overlay (Top Left) */}
+      <div className={`absolute top-6 left-8 md:top-8 md:left-12 pointer-events-none transition-opacity duration-500 z-[60] ${showControls ? 'opacity-100' : 'opacity-40'}`}>
+        <BrandLogo size="sm" className="drop-shadow-2xl" />
+      </div>
+
       {/* Recording Indicator */}
       {isRecording && (
-        <div className="absolute top-4 right-4 md:top-6 md:right-6 flex items-center space-x-2 bg-red-600/20 backdrop-blur-md px-2 py-1 md:px-3 md:py-1.5 rounded-full border border-red-500/30 animate-pulse z-[80]">
-          <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-red-500 rounded-full"></div>
-          <span className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-red-500">Rec. Uplink</span>
+        <div className="absolute top-6 right-8 md:top-8 md:right-12 flex items-center space-x-2 bg-red-600/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-red-500/30 animate-pulse z-[60]">
+          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Rec. Uplink</span>
         </div>
       )}
 
@@ -321,18 +354,59 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
             </div>
           </div>
 
-          {/* Right Controls: Speed, Rec, Pip, Theater, Full */}
+          {/* Right Controls: Quality, Speed, Rec, Pip, Theater, Full */}
           <div className="flex items-center space-x-1 md:space-x-4">
+            
+            {/* Quality Menu */}
+            {levels.length > 0 && (
+              <div className="relative">
+                <button 
+                  onClick={() => {
+                    setShowQualityMenu(!showQualityMenu);
+                    setShowSpeedMenu(false);
+                  }}
+                  className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white p-1 md:p-2 flex items-center space-x-0.5"
+                >
+                  <span>{currentLevel === -1 ? 'Auto' : `${levels[currentLevel]?.height}p`}</span>
+                </button>
+                {showQualityMenu && (
+                  <div className="absolute bottom-full right-0 mb-2 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl md:rounded-2xl p-1 md:p-2 w-24 md:w-32 flex flex-col items-stretch animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <button
+                      onClick={() => handleQualityChange(-1)}
+                      className={`px-3 py-1.5 text-[8px] md:text-[10px] font-black uppercase tracking-widest text-left rounded-lg transition-all ${currentLevel === -1 ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                    >
+                      Auto
+                    </button>
+                    {[...levels].reverse().map((level, idx) => {
+                      const actualIdx = levels.length - 1 - idx;
+                      return (
+                        <button
+                          key={actualIdx}
+                          onClick={() => handleQualityChange(actualIdx)}
+                          className={`px-3 py-1.5 text-[8px] md:text-[10px] font-black uppercase tracking-widest text-left rounded-lg transition-all ${currentLevel === actualIdx ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                        >
+                          {level.height}p {level.bitrate > 5000000 ? '(4K)' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Speed Menu */}
             <div className="relative">
               <button 
-                onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                onClick={() => {
+                  setShowSpeedMenu(!showSpeedMenu);
+                  setShowQualityMenu(false);
+                }}
                 className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white p-1 md:p-2 flex items-center space-x-0.5"
               >
                 <span>{playbackRate}x</span>
               </button>
               {showSpeedMenu && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl md:rounded-2xl p-1 md:p-2 w-16 md:w-20 flex flex-col items-center animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="absolute bottom-full right-0 mb-2 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl md:rounded-2xl p-1 md:p-2 w-16 md:w-20 flex flex-col items-center animate-in fade-in slide-in-from-bottom-2 duration-300">
                   {PLAYBACK_SPEEDS.map(speed => (
                     <button
                       key={speed}
@@ -346,19 +420,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
               )}
             </div>
 
-            <button onClick={toggleRecording} className={`p-1 md:p-2 transition-all active:scale-90 ${isRecording ? 'text-red-500' : 'text-white/60 hover:text-white'}`}>
+            <button onClick={toggleRecording} title="Record stream" className={`p-1 md:p-2 transition-all active:scale-90 ${isRecording ? 'text-red-500' : 'text-white/60 hover:text-white'}`}>
               <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><circle cx="12" cy="12" r="3" /><path d="M12 21a9 9 0 100-18 9 9 0 000 18z" /></svg>
             </button>
 
-            <button onClick={togglePip} className="text-white/60 hover:text-white p-1 md:p-2 hidden sm:block transition-all">
+            <button onClick={togglePip} title="Picture in Picture" className="text-white/60 hover:text-white p-1 md:p-2 hidden sm:block transition-all">
               <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             </button>
 
-            <button onClick={onToggleTheater} className={`p-1 md:p-2 transition-all ${isTheater ? 'text-indigo-400' : 'text-white/60 hover:text-white'}`}>
+            <button onClick={onToggleTheater} title="Theater Mode" className={`p-1 md:p-2 transition-all ${isTheater ? 'text-indigo-400' : 'text-white/60 hover:text-white'}`}>
               <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 12h10" /></svg>
             </button>
 
-            <button onClick={toggleFullscreen} className="text-white/60 hover:text-white p-1 md:p-2 transition-all">
+            <button onClick={toggleFullscreen} title="Toggle Fullscreen" className="text-white/60 hover:text-white p-1 md:p-2 transition-all">
               <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" /></svg>
             </button>
           </div>

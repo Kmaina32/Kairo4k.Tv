@@ -1,4 +1,5 @@
 
+// Fix: Use a more robust import pattern for React to ensure JSX intrinsic elements are recognized
 import * as React from 'react';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Channel } from './types';
@@ -15,7 +16,8 @@ import LoadingScreen from './components/LoadingScreen';
 import MobileNav from './components/MobileNav';
 
 const App: React.FC = () => {
-  const [channels, setChannels] = useState<Channel[]>([]);
+  // Initialize with local channels to avoid empty start
+  const [channels, setChannels] = useState<Channel[]>(NASA_CHANNELS);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -70,37 +72,36 @@ const App: React.FC = () => {
   };
 
   const loadAllFeeds = useCallback(async (isInitial = false) => {
-    if (isInitial) setIsLoading(true);
-    else setIsRefreshing(true);
+    if (isInitial) {
+      // Short delay to let the loading screen pulse once, then enter
+      setTimeout(() => setIsLoading(false), 1200);
+    } else {
+      setIsRefreshing(true);
+    }
     
     setError(null);
-    try {
-      const results = await Promise.all(
-        DEFAULT_PLAYLISTS.map(async (p) => {
-          if (!p.url) return []; 
-          try {
-            const text = await fetchWithFallback(p.url);
-            return parseM3U(text, p.name);
-          } catch (e) { 
-            console.error(`Failed to fetch ${p.name}`, e);
-            return []; 
-          }
-        })
-      );
-      
-      const allChannels = [...NASA_CHANNELS, ...results.flat()];
-      if (allChannels.length === 0) {
-        setError("All signal nodes are currently unreachable.");
-      } else {
-        setChannels(allChannels);
+    
+    // Background fetch each source individually to avoid blocking
+    DEFAULT_PLAYLISTS.forEach(async (p) => {
+      if (!p.url) return;
+      try {
+        const text = await fetchWithFallback(p.url);
+        const parsed = parseM3U(text, p.name);
+        if (parsed.length > 0) {
+          setChannels(prev => {
+            // Filter out existing channels from this source to avoid duplicates on refresh
+            const otherSources = prev.filter(c => c.source !== p.name);
+            return [...otherSources, ...parsed];
+          });
+        }
+      } catch (e) {
+        console.error(`Failed to fetch ${p.name}`, e);
       }
-    } catch (err) {
-      setError("Global uplink failure.");
-    } finally {
-      setTimeout(() => {
-        setIsLoading(false);
-        setIsRefreshing(false);
-      }, 1500);
+    });
+
+    // Cleanup refreshing state after a reasonable time for background tasks
+    if (!isInitial) {
+      setTimeout(() => setIsRefreshing(false), 2000);
     }
   }, []);
 

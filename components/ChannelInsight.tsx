@@ -1,4 +1,5 @@
 
+// Fix: Use a more robust import pattern for React to ensure JSX intrinsic elements are recognized
 import * as React from 'react';
 
 interface ChannelInsightProps {
