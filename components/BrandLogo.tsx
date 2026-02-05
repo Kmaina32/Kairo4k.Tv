@@ -1,4 +1,5 @@
-// Changed React import to import * as React to ensure the JSX namespace and IntrinsicElements are correctly resolved.
+
+// Reverted to namespace React import to fix JSX intrinsic element resolution issues in this environment.
 import * as React from 'react';
 
 interface BrandLogoProps {
