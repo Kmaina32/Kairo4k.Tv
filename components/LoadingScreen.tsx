@@ -1,8 +1,7 @@
-// Standard React import to ensure JSX intrinsic elements are recognized
+/// <reference types="react" />
 import * as React from 'react';
 import BrandLogo from './BrandLogo';
 
-// Use React wildcard import to ensure JSX intrinsic elements are recognized
 const LoadingScreen: React.FC = () => {
   return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-[#020617]">

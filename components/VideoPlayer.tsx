@@ -1,6 +1,5 @@
-// Standard React import to ensure JSX intrinsic elements are recognized
+/// <reference types="react" />
 import * as React from 'react';
-import { useEffect, useRef, useState, useCallback } from 'react';
 import BrandLogo from './BrandLogo';
 
 declare global {
@@ -14,32 +13,32 @@ interface VideoPlayerProps {
   poster: string;
   isTheater: boolean;
   onToggleTheater: () => void;
+  channelName?: string;
 }
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-// Use React wildcard import to fix JSX intrinsic elements missing from global namespace
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onToggleTheater }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [showControls, setShowControls] = useState(true);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [showQualityMenu, setShowQualityMenu] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [levels, setLevels] = useState<any[]>([]);
-  const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 is Auto
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onToggleTheater, channelName }) => {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [volume, setVolume] = React.useState(1);
+  const [isMuted, setIsMuted] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
+  const [duration, setDuration] = React.useState(0);
+  const [showControls, setShowControls] = React.useState(true);
+  const [playbackRate, setPlaybackRate] = React.useState(1);
+  const [showSpeedMenu, setShowSpeedMenu] = React.useState(false);
+  const [showQualityMenu, setShowQualityMenu] = React.useState(false);
+  const [isRecording, setIsRecording] = React.useState(false);
+  const [levels, setLevels] = React.useState<any[]>([]);
+  const [currentLevel, setCurrentLevel] = React.useState<number>(-1); // -1 is Auto
   
-  const hlsRef = useRef<any>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const controlsTimeoutRef = useRef<number | null>(null);
+  const hlsRef = React.useRef<any>(null);
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const controlsTimeoutRef = React.useRef<number | null>(null);
 
-  const resetControlsTimeout = useCallback(() => {
+  const resetControlsTimeout = React.useCallback(() => {
     setShowControls(true);
     if (controlsTimeoutRef.current) {
       window.clearTimeout(controlsTimeoutRef.current);
@@ -49,7 +48,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
     }, 3000);
   }, [isPlaying, showSpeedMenu, showQualityMenu]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -104,6 +103,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
       }
     }
     resetControlsTimeout();
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+      title: `Watching ${channelName || 'Live Stream'} on Kairo 4K`,
+      text: `Check out this live signal: ${channelName}`,
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        alert('Signal link copied to clipboard!');
+      }
+    } catch (err) {
+      console.error('Share failed', err);
+    }
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -228,7 +246,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
     }
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -277,9 +295,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         playsInline
       />
 
-      {/* App Name Overlay (Top Left) */}
-      <div className={`absolute top-6 left-8 md:top-8 md:left-12 pointer-events-none transition-opacity duration-500 z-[60] ${showControls ? 'opacity-100' : 'opacity-40'}`}>
-        <BrandLogo size="sm" className="drop-shadow-2xl" />
+      {/* App Name Overlay (Top Left) - High Visibility */}
+      <div className={`absolute top-6 left-8 md:top-8 md:left-12 pointer-events-none transition-opacity duration-500 z-[60] ${showControls ? 'opacity-100' : 'opacity-90'}`}>
+        <BrandLogo size="sm" className="drop-shadow-[0_4px_12px_rgba(0,0,0,1)]" />
       </div>
 
       {/* Recording Indicator */}
@@ -290,14 +308,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
         </div>
       )}
 
-      {/* Center Play Overlay */}
+      {/* Center Play Overlay - Fixed Rendering to match image */}
       {!isPlaying && (
         <div 
-          className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px] cursor-pointer z-40"
+          className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px] cursor-pointer z-40"
           onClick={togglePlay}
         >
-          <div className="w-16 h-16 md:w-20 md:h-20 bg-indigo-600 rounded-full flex items-center justify-center shadow-2xl shadow-indigo-600/50 transform hover:scale-110 transition-all duration-500">
-            <svg className="w-8 h-8 md:w-10 md:h-10 text-white translate-x-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <div className="w-20 h-20 md:w-24 md:h-24 bg-[#5456f1] rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(84,86,241,0.5)] transform hover:scale-110 transition-all duration-300">
+            <svg className="w-10 h-10 md:w-12 md:h-12 text-white fill-white translate-x-1" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
           </div>
         </div>
       )}
@@ -354,7 +374,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
             </div>
           </div>
 
-          {/* Right Controls: Quality, Speed, Rec, Pip, Theater, Full */}
+          {/* Right Controls: Quality, Speed, Share, Rec, Pip, Theater, Full */}
           <div className="flex items-center space-x-1 md:space-x-4">
             
             {/* Quality Menu */}
@@ -419,6 +439,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, poster, isTheater, onTog
                 </div>
               )}
             </div>
+
+            <button onClick={handleShare} title="Share stream" className="p-1 md:p-2 text-white/60 hover:text-indigo-400 transition-all active:scale-90">
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+            </button>
 
             <button onClick={toggleRecording} title="Record stream" className={`p-1 md:p-2 transition-all active:scale-90 ${isRecording ? 'text-red-500' : 'text-white/60 hover:text-white'}`}>
               <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><circle cx="12" cy="12" r="3" /><path d="M12 21a9 9 0 100-18 9 9 0 000 18z" /></svg>

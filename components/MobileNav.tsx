@@ -1,4 +1,4 @@
-// Standard React import to resolve JSX intrinsic elements namespace issues
+/// <reference types="react" />
 import * as React from 'react';
 
 interface MobileNavProps {
@@ -6,7 +6,6 @@ interface MobileNavProps {
   onSidebarOpen: () => void;
 }
 
-// Use React wildcard import to fix JSX intrinsic elements missing from global namespace
 const MobileNav: React.FC<MobileNavProps> = ({
   isTheater,
   onSidebarOpen

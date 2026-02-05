@@ -1,4 +1,4 @@
-// Standard React import to ensure JSX intrinsic elements are recognized
+/// <reference types="react" />
 import * as React from 'react';
 
 interface BrandLogoProps {
@@ -6,7 +6,6 @@ interface BrandLogoProps {
   className?: string;
 }
 
-// Use React wildcard import to fix JSX intrinsic elements missing from global namespace
 const BrandLogo: React.FC<BrandLogoProps> = ({ size = 'md', className = '' }) => {
   const sizeClasses = {
     sm: 'text-xl',
@@ -18,10 +17,10 @@ const BrandLogo: React.FC<BrandLogoProps> = ({ size = 'md', className = '' }) =>
   return (
     <div className={`flex items-center space-x-2 font-black italic tracking-tighter uppercase select-none ${className}`}>
       <span className={`${sizeClasses[size]} kairo-shimmer`}>
-        K
+        Kairo
       </span>
       <span className={`${sizeClasses[size]} text-indigo-500 kairo-glow`}>
-        4k
+        4K
       </span>
     </div>
   );

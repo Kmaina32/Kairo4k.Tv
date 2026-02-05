@@ -1,11 +1,10 @@
-// Standard React import to ensure JSX intrinsic elements are recognized
+/// <reference types="react" />
 import * as React from 'react';
 
 interface ChannelInsightProps {
   insight: string;
 }
 
-// Use React wildcard import to fix JSX intrinsic elements missing from global namespace
 const ChannelInsight: React.FC<ChannelInsightProps> = ({ insight }) => {
   if (!insight) return null;
   

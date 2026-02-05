@@ -1,4 +1,4 @@
-// Standard React import to resolve JSX intrinsic elements namespace issues
+/// <reference types="react" />
 import * as React from 'react';
 import BrandLogo from './BrandLogo';
 
@@ -11,7 +11,6 @@ interface HeaderProps {
   onRefresh: () => void;
 }
 
-// Use React wildcard import to fix JSX intrinsic elements missing from global namespace
 const Header: React.FC<HeaderProps> = ({
   isTheater,
   sidebarOpen,

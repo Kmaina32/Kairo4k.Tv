@@ -1,6 +1,5 @@
-// Standard React import to resolve JSX intrinsic elements namespace issues
+/// <reference types="react" />
 import * as React from 'react';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Channel } from './types';
 import { DEFAULT_PLAYLISTS, PROXY_OPTIONS, NASA_CHANNELS } from './constants';
 import { parseM3U } from './services/m3uParser';
@@ -14,21 +13,20 @@ import ChannelInsight from './components/ChannelInsight';
 import LoadingScreen from './components/LoadingScreen';
 import MobileNav from './components/MobileNav';
 
-// Use React wildcard import to ensure JSX intrinsic elements are recognized correctly
 const App: React.FC = () => {
   // Initialize with local channels to avoid empty start
-  const [channels, setChannels] = useState<Channel[]>(NASA_CHANNELS);
-  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('Distro');
-  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
-  const [isTheater, setIsTheater] = useState(false);
-  const [aiInsight, setAiInsight] = useState<string>('');
+  const [channels, setChannels] = React.useState<Channel[]>(NASA_CHANNELS);
+  const [selectedChannel, setSelectedChannel] = React.useState<Channel | null>(null);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [activeTab, setActiveTab] = React.useState<string>('Distro');
+  const [sidebarOpen, setSidebarOpen] = React.useState(window.innerWidth > 1024);
+  const [isTheater, setIsTheater] = React.useState(false);
+  const [aiInsight, setAiInsight] = React.useState<string>('');
 
-  useEffect(() => {
+  React.useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 1024) setSidebarOpen(true);
       else setSidebarOpen(false);
@@ -37,7 +35,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (selectedChannel) {
       setAiInsight('Signal frequency analysis in progress...');
       getChannelInsight(selectedChannel.name, selectedChannel.group)
@@ -48,7 +46,7 @@ const App: React.FC = () => {
     }
   }, [selectedChannel]);
 
-  const availableSources = useMemo(() => {
+  const availableSources = React.useMemo(() => {
     const sources = Array.from(new Set(channels.map(c => c.source)));
     return sources.length > 0 ? sources.sort() : DEFAULT_PLAYLISTS.map(p => p.name).sort();
   }, [channels]);
@@ -94,7 +92,7 @@ const App: React.FC = () => {
     throw lastError || new Error("Connection failed across all uplink nodes.");
   };
 
-  const loadAllFeeds = useCallback(async (isInitial = false) => {
+  const loadAllFeeds = React.useCallback(async (isInitial = false) => {
     if (isInitial) {
       // Short delay to let the loading screen pulse once, then enter
       setTimeout(() => setIsLoading(false), 1200);
@@ -129,11 +127,11 @@ const App: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { 
+  React.useEffect(() => { 
     loadAllFeeds(true); 
   }, [loadAllFeeds]);
 
-  const filteredChannels = useMemo(() => {
+  const filteredChannels = React.useMemo(() => {
     return channels.filter(c => 
       c.source === activeTab && 
       (c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -146,7 +144,28 @@ const App: React.FC = () => {
     if (window.innerWidth < 1024) setSidebarOpen(false);
   };
 
-  useEffect(() => {
+  const handleSourceSelect = (sourceName: string) => {
+    setActiveTab(sourceName);
+    setSidebarOpen(true);
+  };
+
+  const handleShare = async () => {
+    if (!selectedChannel) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Kairo 4K - ${selectedChannel.name}`,
+          text: `Watch ${selectedChannel.name} live on Kairo 4K`,
+          url: window.location.href
+        });
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        alert('Signal link copied to clipboard');
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSidebarOpen(prev => !prev);
       if (e.key === 'f') toggleTheater();
@@ -189,7 +208,7 @@ const App: React.FC = () => {
           isTheater={isTheater}
           sidebarOpen={sidebarOpen}
           onSidebarToggle={setSidebarOpen}
-          title={selectedChannel?.name || 'K 4k Uplink Ready'}
+          title={selectedChannel?.name || 'Kairo 4K Uplink'}
           isRefreshing={isRefreshing}
           onRefresh={() => loadAllFeeds()}
         />
@@ -203,6 +222,7 @@ const App: React.FC = () => {
                   poster={selectedChannel.logo} 
                   isTheater={isTheater} 
                   onToggleTheater={toggleTheater} 
+                  channelName={selectedChannel.name}
                 />
               </div>
               
@@ -213,7 +233,15 @@ const App: React.FC = () => {
                         <img src={selectedChannel.logo} className="w-full h-full object-contain filter drop-shadow-lg" alt="" onError={(e) => e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(selectedChannel.name)}`} />
                       </div>
                       <div className="space-y-4 min-w-0 flex-1 text-center md:text-left">
-                        <h3 className="text-3xl md:text-5xl font-black tracking-tighter uppercase leading-none text-white">{selectedChannel.name}</h3>
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <h3 className="text-3xl md:text-5xl font-black tracking-tighter uppercase leading-none text-white">{selectedChannel.name}</h3>
+                          <button onClick={handleShare} className="mx-auto md:mx-0 p-3 bg-indigo-600/20 border border-indigo-500/30 rounded-2xl text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all active:scale-95 flex items-center space-x-2">
+                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                               <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                             </svg>
+                             <span className="text-[10px] font-black uppercase tracking-widest">Share Signal</span>
+                          </button>
+                        </div>
                         <div className="flex flex-wrap justify-center md:justify-start gap-3">
                           <span className="bg-indigo-500/10 text-indigo-400 px-4 py-1.5 rounded-full text-[10px] font-black border border-indigo-500/20 uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/5">{selectedChannel.source}</span>
                           <span className="bg-emerald-500/10 text-emerald-400 px-4 py-1.5 rounded-full text-[10px] font-black border border-emerald-500/20 uppercase tracking-[0.2em]">4K Ultra Signal</span>
@@ -226,9 +254,36 @@ const App: React.FC = () => {
               )}
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
-               <div className="text-8xl font-black italic tracking-tighter text-indigo-500/20 uppercase mb-12 select-none">K 4k</div>
-               <p className="text-[11px] font-black uppercase tracking-[0.5em] text-indigo-400/50">Frequency Selection Required</p>
+            <div className="h-full max-w-6xl mx-auto flex flex-col items-center justify-center py-12 px-6">
+               <div className="text-center space-y-4 mb-12">
+                  <div className="text-6xl md:text-8xl font-black italic tracking-tighter text-indigo-500/30 uppercase select-none">Kairo 4K</div>
+                  <p className="text-xs md:text-sm font-black uppercase tracking-[0.4em] text-indigo-400/60">Uplink Signal Hub</p>
+               </div>
+
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+                  {DEFAULT_PLAYLISTS.map(source => (
+                    <button 
+                      key={source.name}
+                      onClick={() => handleSourceSelect(source.name)}
+                      className="group relative p-10 bg-slate-900/40 border border-white/5 rounded-[2.5rem] overflow-hidden hover:bg-indigo-600/10 hover:border-indigo-500/30 transition-all text-left shadow-2xl"
+                    >
+                      <div className="relative z-10">
+                        <div className="w-12 h-12 bg-indigo-600/10 rounded-2xl flex items-center justify-center mb-6 border border-indigo-500/20 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                             <path d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.828a5 5 0 010-7.07m7.07 0a5 5 0 010 7.07M3.343 21a11.96 11.96 0 010-18m17.314 0a11.96 11.96 0 010 18M12 13a1 1 0 110-2 1 1 0 010 2z" />
+                           </svg>
+                        </div>
+                        <span className="block text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-2 opacity-60">Frequency Node</span>
+                        <h4 className="text-3xl font-black uppercase tracking-tighter text-white group-hover:text-indigo-400 transition-colors leading-none">{source.name}</h4>
+                        <div className="mt-6 flex items-center space-x-2 text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] group-hover:text-indigo-300 transition-colors">
+                           <span>Access Signals</span>
+                           <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                        </div>
+                      </div>
+                      <div className="absolute -right-6 -bottom-6 text-[10rem] font-black text-white/5 uppercase italic group-hover:text-indigo-500/10 transition-colors pointer-events-none select-none">{source.name[0]}</div>
+                    </button>
+                  ))}
+               </div>
             </div>
           )}
         </main>
