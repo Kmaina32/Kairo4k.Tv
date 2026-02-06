@@ -20,7 +20,7 @@ const MobileNav = ({
     {
       view: 'live',
       icon: (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       )
@@ -28,7 +28,7 @@ const MobileNav = ({
     {
       view: 'favorites',
       icon: (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
         </svg>
       )
@@ -36,7 +36,7 @@ const MobileNav = ({
     {
       view: 'account',
       icon: (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
       )
@@ -44,17 +44,17 @@ const MobileNav = ({
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-6 inset-x-6 h-20 glass rounded-[40px] border-white/10 flex items-center justify-between px-8 z-[55] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)]">
-      <div className="flex flex-1 items-center justify-around h-10 border-r border-white/10 pr-4">
+    <nav className="lg:hidden fixed bottom-4 inset-x-4 h-16 glass rounded-[32px] border-white/10 flex items-center justify-between px-6 z-[55] shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)]">
+      <div className="flex flex-1 items-center justify-around h-8 border-r border-white/10 pr-4">
         {navItems.map((item) => (
           <button 
             key={item.view} 
             onClick={() => onViewChange(item.view)}
-            className={`flex flex-col items-center justify-center p-3 transition-all relative ${activeView === item.view ? 'text-indigo-400 scale-125' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex flex-col items-center justify-center p-2 transition-all relative ${activeView === item.view ? 'text-indigo-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
           >
             {item.icon}
             {activeView === item.view && (
-              <div className="absolute -bottom-4 w-1.5 h-1.5 bg-indigo-500 rounded-full shadow-[0_0_15px_#6366f1]" />
+              <div className="absolute -bottom-3 w-1 h-1 bg-indigo-500 rounded-full shadow-[0_0_10px_#6366f1]" />
             )}
           </button>
         ))}
@@ -62,10 +62,10 @@ const MobileNav = ({
       
       <button 
         onClick={(e) => { e.preventDefault(); onSidebarOpen(); }} 
-        className="flex items-center justify-center pl-6 text-indigo-500 active:scale-90 transition-all group"
+        className="flex items-center justify-center pl-4 text-indigo-500 active:scale-90 transition-all group"
       >
-        <div className="w-14 h-14 bg-indigo-600/10 border border-indigo-500/20 rounded-[30px] flex items-center justify-center shadow-2xl group-hover:bg-indigo-600/20">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+        <div className="w-10 h-10 bg-indigo-600/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center shadow-2xl group-hover:bg-indigo-600/20">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </div>

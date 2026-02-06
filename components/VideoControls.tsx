@@ -54,7 +54,6 @@ const VideoControls = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Close menus when controls hide
   useEffect(() => {
     if (!showControls) {
       setShowSpeedMenu(false);
@@ -74,27 +73,27 @@ const VideoControls = ({
   );
 
   return (
-    <div className={`absolute bottom-0 inset-x-0 transition-all duration-500 pb-6 md:pb-10 px-6 md:px-12 flex justify-center ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+    <div className={`absolute bottom-0 inset-x-0 transition-all duration-500 pb-4 md:pb-10 px-4 md:px-12 flex justify-center ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
       
-      {/* THE UNIFIED COMMAND BRIDGE */}
-      <div className="glass h-16 md:h-20 w-full max-w-5xl rounded-[32px] flex items-center justify-between px-6 md:px-10 gap-2 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+      {/* THE UNIFIED COMMAND BRIDGE - Reduced height on mobile (h-14) */}
+      <div className="glass h-14 md:h-20 w-full max-w-5xl rounded-[28px] md:rounded-[32px] flex items-center justify-between px-4 md:px-10 gap-2 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
         
         {/* GROUP ALPHA: CORE CONTROLS */}
-        <div className="flex items-center space-x-3 md:space-x-6 flex-shrink-0">
-          <button onClick={onTogglePlay} className="text-white hover:scale-110 transition-all p-2.5 bg-white/5 rounded-full hover:bg-indigo-600 active:scale-90">
+        <div className="flex items-center space-x-2 md:space-x-6 flex-shrink-0">
+          <button onClick={onTogglePlay} className="text-white hover:scale-110 transition-all p-2 md:p-2.5 bg-white/5 rounded-full hover:bg-indigo-600 active:scale-90">
             {isPlaying ? (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
             ) : (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             )}
           </button>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 md:space-x-3">
             <button onClick={onToggleMute} className="text-white/60 hover:text-white transition-colors">
               {isMuted || volume === 0 ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M5.586 15L4 13.414V10.586L5.586 9H8l4-4v14l-4-4H5.586z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M5.586 15L4 13.414V10.586L5.586 9H8l4-4v14l-4-4H5.586z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
               ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15L4 13.414V10.586L5.586 9H8l4-4v14l-4-4H5.586z" /></svg>
+                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15L4 13.414V10.586L5.586 9H8l4-4v14l-4-4H5.586z" /></svg>
               )}
             </button>
             <input 
@@ -114,15 +113,13 @@ const VideoControls = ({
         </div>
 
         {/* GROUP GAMMA: STREAM INTELLIGENCE & DISPLAY */}
-        <div className="flex items-center space-x-2 md:space-x-4">
+        <div className="flex items-center space-x-1.5 md:space-x-4">
           
-          {/* Stream Settings Wrapper */}
-          <div className="flex items-center space-x-2 bg-white/5 p-1.5 rounded-2xl border border-white/5">
-            {/* Speed */}
+          <div className="flex items-center space-x-1 md:space-x-2 bg-white/5 p-1 md:p-1.5 rounded-xl md:rounded-2xl border border-white/5">
             <div className="relative">
               <button 
                 onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowQualityMenu(false); }} 
-                className={`text-[9px] md:text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all ${showSpeedMenu ? 'bg-indigo-600 text-white' : 'text-white/40 hover:text-white'}`}
+                className={`text-[8px] md:text-[10px] font-black px-2 md:px-2.5 py-1 md:py-1.5 rounded-lg md:rounded-xl transition-all ${showSpeedMenu ? 'bg-indigo-600 text-white' : 'text-white/40 hover:text-white'}`}
               >
                 {playbackRate}x
               </button>
@@ -135,11 +132,10 @@ const VideoControls = ({
               )}
             </div>
 
-            {/* Quality */}
             <div className="relative">
               <button 
                 onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }} 
-                className={`text-[9px] md:text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all ${showQualityMenu ? 'bg-indigo-600 text-white' : 'text-white/40 hover:text-white'}`}
+                className={`text-[8px] md:text-[10px] font-black px-2 md:px-2.5 py-1 md:py-1.5 rounded-lg md:rounded-xl transition-all ${showQualityMenu ? 'bg-indigo-600 text-white' : 'text-white/40 hover:text-white'}`}
               >
                 {currentLevel === -1 ? 'AUTO' : (qualityLevels[currentLevel]?.height ? `${qualityLevels[currentLevel].height}P` : 'HD')}
               </button>
@@ -155,27 +151,29 @@ const VideoControls = ({
               )}
             </div>
 
-            {/* Recording */}
             <button 
               onClick={isRecording ? onStopRecording : onStartRecording} 
-              className={`p-1.5 rounded-xl transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-white/40 hover:text-white'}`}
+              className={`p-1 md:p-1.5 rounded-lg md:rounded-xl transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-white/40 hover:text-white'}`}
             >
-              <div className={`w-2.5 h-2.5 rounded-full ${isRecording ? 'bg-red-500' : 'bg-current shadow-[0_0_8px_currentColor]'}`} />
+              <div className={`w-2 md:w-2.5 h-2 md:h-2.5 rounded-full ${isRecording ? 'bg-red-500' : 'bg-current shadow-[0_0_8px_currentColor]'}`} />
             </button>
           </div>
 
-          {/* Display Mode Group */}
-          <div className="flex items-center space-x-1.5 md:space-x-3">
-             <button onClick={onTogglePIP} className="hidden sm:flex text-white/40 hover:text-white p-2 md:p-3 bg-white/5 rounded-2xl transition-all">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-             </button>
+          <div className="flex items-center space-x-1 md:space-x-3">
+             {/* PIP and Fullscreen hidden on mobile as requested for reliability */}
+             {!isMobile && (
+               <>
+                 <button onClick={onTogglePIP} className="flex text-white/40 hover:text-white p-2 md:p-3 bg-white/5 rounded-2xl transition-all">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                 </button>
+                 <button onClick={onToggleFullscreen} className="text-white/40 hover:text-white p-2 md:p-3 bg-white/5 rounded-2xl transition-all">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" /></svg>
+                 </button>
+               </>
+             )}
              
-             <button onClick={onToggleTheater} className={`p-2 md:p-3 rounded-2xl transition-all ${isTheater ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/40 hover:text-white'}`}>
+             <button onClick={onToggleTheater} className={`p-2 md:p-3 rounded-xl md:rounded-2xl transition-all ${isTheater ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/40 hover:text-white'}`}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><rect x="3" y="4" width="18" height="16" rx="2" /></svg>
-             </button>
-             
-             <button onClick={onToggleFullscreen} className="text-white/40 hover:text-white p-2 md:p-3 bg-white/5 rounded-2xl transition-all">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" /></svg>
              </button>
           </div>
         </div>

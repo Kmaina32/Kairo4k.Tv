@@ -130,7 +130,6 @@ const App = () => {
         onClick={() => handleChannelSelect(channel)} 
         className={`w-full h-full relative bg-[#020617] border-2 rounded-[32px] transition-all overflow-hidden text-left ${selectedChannel?.id === channel.id ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-white/5 hover:border-white/20'}`}
       >
-        {/* BG IMAGE - 90% VISIBLE & COLORED */}
         <div 
           className="absolute inset-0 opacity-90 transition-all duration-700 group-hover:scale-110" 
           style={{ 
@@ -140,24 +139,16 @@ const App = () => {
             filter: 'contrast(1.1) brightness(0.6)' 
           }} 
         />
-        
-        {/* OVERLAY GRADIENT FOR TEXT READABILITY */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617]/90 via-transparent to-transparent z-10" />
-
         <div className="relative z-20 h-full flex flex-col justify-between p-6">
-          {/* Top-Left Logo Box */}
           <div className="w-14 h-14 bg-black/80 rounded-2xl flex items-center justify-center p-2 border border-white/10 shadow-2xl backdrop-blur-md">
             <img src={channel.logo} className="w-full h-full object-contain" alt="" onError={(e) => e.currentTarget.src='https://api.dicebear.com/7.x/identicon/svg?seed='+channel.name} />
           </div>
-
-          {/* Bottom-Left Name */}
           <h4 className="text-[11px] font-black uppercase text-white truncate pr-16 tracking-[0.15em] drop-shadow-lg">
             {channel.name}
           </h4>
         </div>
       </button>
-
-      {/* Favorite Button - Bottom Right */}
       <button 
         onClick={(e) => toggleFavorite(e, channel)}
         className={`absolute bottom-6 right-6 z-30 w-12 h-12 flex items-center justify-center rounded-2xl transition-all ${favorites.some(f => f.id === channel.id) ? 'bg-indigo-600 text-white shadow-xl' : 'bg-white/10 text-white/40 hover:text-white hover:bg-white/20 backdrop-blur-md'}`}
@@ -167,7 +158,6 @@ const App = () => {
     </div>
   );
 
-  // --- DESKTOP LAYOUT ---
   const DesktopLayout = () => (
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 overflow-hidden">
       <Header isTheater={isTheater} sidebarOpen={false} onSidebarToggle={() => {}} />
@@ -182,8 +172,6 @@ const App = () => {
                 </div>
               </div>
             )}
-
-            {/* Command Bar */}
             <div className="flex items-center gap-4 mb-10 h-14">
               <div className="relative h-full w-72" ref={dropdownRef}>
                 <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 flex items-center justify-between hover:bg-white/[0.05] transition-all">
@@ -202,7 +190,6 @@ const App = () => {
                   </div>
                 )}
               </div>
-
               <div className="flex-1 h-full relative">
                 <input 
                   type="text" 
@@ -213,8 +200,6 @@ const App = () => {
                 />
               </div>
             </div>
-
-            {/* Signal Grid */}
             {activeView === 'live' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
                 {channels.filter(c => c.source === activeTab && c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, visibleCount).map(ch => (
@@ -222,7 +207,6 @@ const App = () => {
                 ))}
               </div>
             )}
-
             {activeView === 'favorites' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
                 {favorites.map(ch => (
@@ -236,14 +220,14 @@ const App = () => {
     </div>
   );
 
-  // --- MOBILE LAYOUT ---
   const MobileLayout = () => (
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 overflow-hidden">
       <Header isTheater={false} sidebarOpen={sidebarOpen} onSidebarToggle={setSidebarOpen} />
       
       {selectedChannel && (
         <div className="flex-shrink-0 z-[60] sticky top-0 bg-[#020617] p-2 border-b border-white/5 shadow-xl">
-          <div className="rounded-[24px] overflow-hidden shadow-2xl border border-white/10 bg-black aspect-video">
+          {/* Increased Height by ~30%: Changed aspect-video (16/9) to aspect-[16/12] (4/3) */}
+          <div className="rounded-[24px] overflow-hidden shadow-2xl border border-white/10 bg-black aspect-[16/12]">
             <VideoPlayer url={selectedChannel.url} poster={selectedChannel.logo} isTheater={false} onToggleTheater={() => {}} channelName={selectedChannel.name} />
           </div>
         </div>
@@ -263,7 +247,7 @@ const App = () => {
          </div>
       </div>
 
-      <main ref={mainRef} className="flex-1 overflow-y-auto p-4 pb-32 no-scrollbar">
+      <main ref={mainRef} className="flex-1 overflow-y-auto p-4 pb-24 no-scrollbar">
         {activeView === 'live' && (
           <div className="space-y-4">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 ml-1">{activeTab} Nodes</h3>
