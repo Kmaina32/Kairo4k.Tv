@@ -73,9 +73,9 @@ const VideoControls = ({
   );
 
   return (
-    <div className={`absolute bottom-0 inset-x-0 transition-all duration-500 pb-4 md:pb-10 px-4 md:px-12 flex justify-center ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+    <div className={`absolute bottom-0 inset-x-0 transition-all duration-500 pb-3 md:pb-10 px-4 md:px-12 flex justify-center ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
       
-      {/* THE UNIFIED COMMAND BRIDGE - Reduced height on mobile (h-14) */}
+      {/* THE UNIFIED COMMAND BRIDGE */}
       <div className="glass h-14 md:h-20 w-full max-w-5xl rounded-[28px] md:rounded-[32px] flex items-center justify-between px-4 md:px-10 gap-2 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
         
         {/* GROUP ALPHA: CORE CONTROLS */}
@@ -160,7 +160,6 @@ const VideoControls = ({
           </div>
 
           <div className="flex items-center space-x-1 md:space-x-3">
-             {/* PIP and Fullscreen hidden on mobile as requested for reliability */}
              {!isMobile && (
                <>
                  <button onClick={onTogglePIP} className="flex text-white/40 hover:text-white p-2 md:p-3 bg-white/5 rounded-2xl transition-all">

@@ -123,7 +123,6 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    // Detect most compatible format for mobile (Priority: MP4 > H264 WebM > VP9 WebM)
     const mimeTypes = [
       'video/mp4;codecs=avc1',
       'video/mp4',
@@ -175,8 +174,8 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
 
   return (
     <div 
-      className={`relative w-full overflow-hidden bg-black group select-none transition-all duration-500
-        ${isTheater ? 'fixed inset-0 z-[200] h-screen' : 'rounded-[32px] aspect-video'}`}
+      className={`relative w-full h-full overflow-hidden bg-black group select-none transition-all duration-500
+        ${isTheater ? 'fixed inset-0 z-[200] h-screen' : 'rounded-[32px]'}`}
       onMouseMove={resetControlsTimeout}
     >
       <video
@@ -189,11 +188,11 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
       
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* MINIMAL BRANDING ONLY */}
-      <div className="absolute top-6 left-8 z-30 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity">
+      {/* MINIMAL BRANDING - Adjusted for mobile position */}
+      <div className="absolute top-4 md:top-6 left-5 md:left-8 z-30 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity">
         <div className="flex items-center space-x-1.5">
-           <span className="text-sm md:text-lg font-black uppercase tracking-[0.2em] text-white">KAIRO</span>
-           <span className="text-sm md:text-lg font-black text-indigo-500 tracking-tighter">4K</span>
+           <span className="text-[10px] md:text-lg font-black uppercase tracking-[0.2em] text-white">KAIRO</span>
+           <span className="text-[10px] md:text-lg font-black text-indigo-500 tracking-tighter">4K</span>
         </div>
       </div>
 
