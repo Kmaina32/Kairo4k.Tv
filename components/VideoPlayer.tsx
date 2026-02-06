@@ -137,9 +137,6 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         ctx.fillStyle = 'rgba(99, 102, 241, 0.9)';
         ctx.font = 'bold 40px Inter, Arial';
         ctx.fillText('KAIRO 4K', canvas.width - 240, canvas.height - 60);
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 1;
-        ctx.strokeText('KAIRO 4K', canvas.width - 240, canvas.height - 60);
       }
       requestAnimationFrame(recordLoop);
     };
@@ -180,22 +177,17 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
       
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* PERMANENT BRANDING OVERLAY */}
-      <div className="absolute top-8 left-10 z-30 pointer-events-none flex items-start space-x-4">
-        <div className="flex flex-col">
-          <div className="flex items-center space-x-2 mb-1">
-             <span className="text-xl md:text-3xl font-black uppercase tracking-[0.2em] kairo-shimmer drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">KAIRO</span>
-             <span className="text-xl md:text-3xl font-black text-indigo-500 tracking-tighter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">4K</span>
-          </div>
-          <h2 className="text-sm md:text-lg font-black italic uppercase text-white/90 drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)] tracking-widest scale-y-105 origin-left">
-            {channelName || 'SCANNING...'}
-          </h2>
+      {/* MINIMAL BRANDING ONLY */}
+      <div className="absolute top-6 left-8 z-30 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center space-x-1.5">
+           <span className="text-sm md:text-lg font-black uppercase tracking-[0.2em] text-white">KAIRO</span>
+           <span className="text-sm md:text-lg font-black text-indigo-500 tracking-tighter">4K</span>
         </div>
       </div>
 
       {errorStatus && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center">
-          <span className="text-[12px] font-black uppercase tracking-[0.5em] text-indigo-400 animate-pulse">{errorStatus}</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.5em] text-indigo-400 animate-pulse">{errorStatus}</span>
         </div>
       )}
 
