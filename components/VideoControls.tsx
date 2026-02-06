@@ -44,7 +44,6 @@ const VideoControls = ({
   onStopRecording,
   showControls
 }: VideoControlsProps) => {
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -56,7 +55,6 @@ const VideoControls = ({
 
   useEffect(() => {
     if (!showControls) {
-      setShowSpeedMenu(false);
       setShowQualityMenu(false);
     }
   }, [showControls]);
@@ -118,23 +116,7 @@ const VideoControls = ({
           <div className="flex items-center space-x-1 md:space-x-2 bg-white/5 p-1 md:p-1.5 rounded-xl md:rounded-2xl border border-white/5">
             <div className="relative">
               <button 
-                onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowQualityMenu(false); }} 
-                className={`text-[8px] md:text-[10px] font-black px-2 md:px-2.5 py-1 md:py-1.5 rounded-lg md:rounded-xl transition-all ${showSpeedMenu ? 'bg-indigo-600 text-white' : 'text-white/40 hover:text-white'}`}
-              >
-                {playbackRate}x
-              </button>
-              {showSpeedMenu && (
-                <MenuOverlay onClose={() => setShowSpeedMenu(false)}>
-                  {[0.5, 1, 1.25, 1.5, 2].map(r => (
-                    <button key={r} onClick={() => { onPlaybackRateChange(r); setShowSpeedMenu(false); }} className={`text-[10px] font-black p-3 rounded-2xl text-left transition-all ${playbackRate === r ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>{r}x</button>
-                  ))}
-                </MenuOverlay>
-              )}
-            </div>
-
-            <div className="relative">
-              <button 
-                onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }} 
+                onClick={() => { setShowQualityMenu(!showQualityMenu); }} 
                 className={`text-[8px] md:text-[10px] font-black px-2 md:px-2.5 py-1 md:py-1.5 rounded-lg md:rounded-xl transition-all ${showQualityMenu ? 'bg-indigo-600 text-white' : 'text-white/40 hover:text-white'}`}
               >
                 {currentLevel === -1 ? 'AUTO' : (qualityLevels[currentLevel]?.height ? `${qualityLevels[currentLevel].height}P` : 'HD')}

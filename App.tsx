@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Channel, ProxyStatus, UserProfile, CloudStats } from './types';
 import { DEFAULT_PLAYLISTS, PROXY_OPTIONS, NASA_CHANNELS, CACHE_TTL } from './constants';
@@ -209,65 +208,83 @@ const App = () => {
         <Sidebar activeView={activeView} onViewChange={setActiveView} isOpen={true} />
         <main ref={mainRef} className="flex-1 overflow-y-auto px-10 py-8 pb-32 no-scrollbar bg-slate-950/20">
           <div className="mx-auto w-full max-w-[1700px]">
-            {selectedChannel && (
+            {activeView === 'live' && selectedChannel && (
               <div className={`mb-12 animate-in fade-in duration-700 ${isTheater ? 'fixed inset-0 z-[300] bg-black m-0' : ''}`}>
                 <div className={`shadow-2xl border border-white/5 bg-black overflow-hidden ${isTheater ? 'rounded-0 h-screen' : 'rounded-[40px] aspect-video w-full'}`}>
                   <VideoPlayer url={selectedChannel.url} poster={selectedChannel.logo} isTheater={isTheater} onToggleTheater={() => setIsTheater(!isTheater)} channelName={selectedChannel.name} />
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-4 mb-10 h-14">
-              <div className="relative h-full w-80" ref={dropdownRef}>
-                <button 
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
-                  className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 flex items-center justify-between hover:bg-white/[0.05] transition-all"
-                >
-                  <span className="text-[11px] font-black uppercase tracking-widest truncate text-slate-300">
-                    {activeTab || 'SELECT SOURCE'}
-                  </span>
-                  <svg className={`w-4 h-4 text-slate-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 9l-7 7-7-7" /></svg>
-                </button>
-                {isDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-[200] backdrop-blur-xl">
-                    <div className="max-h-[35vh] overflow-y-auto no-scrollbar">
-                      {DEFAULT_PLAYLISTS.map(s => (
-                        <button key={s.name} onClick={() => { setActiveTab(s.name); setIsDropdownOpen(false); }} className={`w-full px-4 py-3 rounded-xl text-left transition-all text-[10px] font-black uppercase tracking-widest mb-1 ${activeTab === s.name ? 'bg-indigo-600 text-white' : 'hover:bg-white/5 text-slate-400'}`}>
-                          {s.name}
-                        </button>
-                      ))}
-                    </div>
+            
+            {activeView === 'account' ? (
+              <div className="py-20 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="w-24 h-24 bg-indigo-600/10 border border-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-8">
+                  <svg className="w-10 h-10 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                </div>
+                <h2 className="text-2xl font-black uppercase tracking-[0.3em] mb-4">Terminal Alpha</h2>
+                <p className="text-slate-500 text-sm font-medium tracking-widest uppercase">Operator Sync Active • Node 04</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-4 mb-10 h-14">
+                  <div className="relative h-full w-80" ref={dropdownRef}>
+                    <button 
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
+                      className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 flex items-center justify-between hover:bg-white/[0.05] transition-all"
+                    >
+                      <span className="text-[11px] font-black uppercase tracking-widest truncate text-slate-300">
+                        {activeTab || 'SELECT SOURCE'}
+                      </span>
+                      <svg className={`w-4 h-4 text-slate-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    {isDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-[200] backdrop-blur-xl">
+                        <div className="max-h-[35vh] overflow-y-auto no-scrollbar">
+                          {DEFAULT_PLAYLISTS.map(s => (
+                            <button key={s.name} onClick={() => { setActiveTab(s.name); setIsDropdownOpen(false); }} className={`w-full px-4 py-3 rounded-xl text-left transition-all text-[10px] font-black uppercase tracking-widest mb-1 ${activeTab === s.name ? 'bg-indigo-600 text-white' : 'hover:bg-white/5 text-slate-400'}`}>
+                              {s.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 h-full relative">
+                    <input 
+                      type="text" 
+                      placeholder="SEARCH SIGNALS..." 
+                      value={searchTerm} 
+                      onChange={(e) => setSearchTerm(e.target.value)} 
+                      className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 text-[11px] font-black uppercase tracking-[0.2em] text-white outline-none focus:border-indigo-500/40 focus:bg-white/[0.06] transition-all" 
+                    />
+                  </div>
+                </div>
+
+                {activeView === 'live' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
+                    {filteredChannels.length > 0 ? filteredChannels.map(ch => (
+                      <ChannelCard key={ch.id} channel={ch} />
+                    )) : (
+                      <div className="col-span-full py-20 text-center">
+                        <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white/20">
+                          No signals found in this sector
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-              <div className="flex-1 h-full relative">
-                <input 
-                  type="text" 
-                  placeholder="SEARCH SIGNALS..." 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                  className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 text-[11px] font-black uppercase tracking-[0.2em] text-white outline-none focus:border-indigo-500/40 focus:bg-white/[0.06] transition-all" 
-                />
-              </div>
-            </div>
-            {activeView === 'live' && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
-                {filteredChannels.length > 0 ? filteredChannels.map(ch => (
-                  <ChannelCard key={ch.id} channel={ch} />
-                )) : (
-                  <div className="col-span-full py-20 text-center">
-                    <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white/20">
-                      No signals found in this sector
-                    </p>
+                {activeView === 'favorites' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
+                    {favorites.length > 0 ? favorites.map(ch => (
+                      <ChannelCard key={ch.id} channel={ch} />
+                    )) : (
+                      <div className="col-span-full py-40 text-center opacity-30">
+                        <p className="text-[10px] font-black uppercase tracking-[0.5em]">Priority Pool Empty</p>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
-            {activeView === 'favorites' && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
-                {favorites.map(ch => (
-                  <ChannelCard key={ch.id} channel={ch} />
-                ))}
-              </div>
+              </>
             )}
           </div>
         </main>
@@ -279,9 +296,9 @@ const App = () => {
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 overflow-hidden">
       <Header isTheater={false} sidebarOpen={sidebarOpen} onSidebarToggle={setSidebarOpen} />
       
-      {selectedChannel && (
+      {activeView === 'live' && selectedChannel && (
         <div className="flex-shrink-0 z-[60] sticky top-0 bg-[#020617] p-2 border-b border-white/5 shadow-xl">
-          <div className="rounded-[24px] overflow-hidden shadow-2xl border border-white/10 bg-black aspect-[16/12]">
+          <div className="rounded-[24px] overflow-hidden shadow-2xl border border-white/10 bg-black aspect-video">
             <VideoPlayer url={selectedChannel.url} poster={selectedChannel.logo} isTheater={false} onToggleTheater={() => {}} channelName={selectedChannel.name} />
           </div>
         </div>
@@ -319,6 +336,7 @@ const App = () => {
                       <h4 className="text-[9px] font-black uppercase text-white truncate pr-4 tracking-widest drop-shadow-md">{ch.name}</h4>
                     </div>
                   </button>
+                  {/* Fixed reference from 'channel' to 'ch' below */}
                   <button onClick={(e) => toggleFavorite(e, ch)} className={`absolute bottom-3 right-3 z-20 p-2 rounded-xl bg-black/40 backdrop-blur-md ${favorites.some(f => f.id === ch.id) ? 'text-indigo-400' : 'text-white/40'}`}>
                     <svg className="w-3.5 h-3.5" fill={favorites.some(f => f.id === ch.id) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
                   </button>
@@ -330,7 +348,7 @@ const App = () => {
           </div>
         )}
         {activeView === 'favorites' && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 pt-4">
              {favorites.length > 0 ? favorites.map(ch => (
                 <div key={ch.id} className="relative h-44">
                   <button onClick={() => handleChannelSelect(ch)} className="w-full h-full relative bg-[#020617] rounded-3xl border border-white/5 text-left overflow-hidden">
@@ -344,6 +362,15 @@ const App = () => {
                   </button>
                 </div>
              )) : <div className="col-span-2 text-center py-20 opacity-30 text-[9px] uppercase font-black tracking-widest">Locked Signals Empty</div>}
+          </div>
+        )}
+        {activeView === 'account' && (
+          <div className="py-20 text-center animate-in fade-in duration-700">
+            <div className="w-20 h-20 bg-indigo-600/10 border border-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+            </div>
+            <h2 className="text-xl font-black uppercase tracking-[0.2em]">Terminal</h2>
+            <p className="text-slate-500 text-[9px] font-black tracking-widest uppercase mt-2">Operator Sync Active</p>
           </div>
         )}
       </main>
