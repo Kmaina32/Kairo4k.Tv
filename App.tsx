@@ -21,7 +21,7 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<string | null>(DEFAULT_PLAYLISTS[0].name);
+  const [activeTab, setActiveTab] = useState<string | null>('Free Live Sports');
   const [activeView, setActiveView] = useState<'live' | 'favorites' | 'account'>('live');
   const [sidebarOpen, setSidebarOpen] = useState(false); 
   const [isTheater, setIsTheater] = useState(false);
@@ -36,6 +36,7 @@ const App = () => {
 
   const mainRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const hasAutoPlayedRef = useRef(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -47,24 +48,54 @@ const App = () => {
     const boot = async () => {
       setTimeout(() => setIsLoading(false), 1200);
       cloudService.getSystemStatus().then(setCloudStats);
-      for (const p of DEFAULT_PLAYLISTS) {
-        fetchWithFallback(p.url, p.name).then(text => {
+      
+      const promises = DEFAULT_PLAYLISTS
+        .filter(p => p.url !== '')
+        .map(p => fetchWithFallback(p.url, p.name).then(text => {
           if (!text) return;
           const parsed = parseM3U(text, p.name);
           if (parsed.length > 0) {
             setChannels(prev => {
               const others = prev.filter(c => c.source !== p.name);
-              return [...others, ...parsed];
+              const updated = [...others, ...parsed];
+              
+              // AUTO-PLAY LOGIC: First load 'Free Live Sports' and pick 'Big 12 Network'
+              if (p.name === 'Free Live Sports' && !hasAutoPlayedRef.current) {
+                const big12 = parsed.find(c => 
+                  c.name.toLowerCase().includes('big 12 network') || 
+                  c.name.toLowerCase().includes('big 12')
+                );
+                if (big12) {
+                  setSelectedChannel(big12);
+                  hasAutoPlayedRef.current = true;
+                } else if (!selectedChannel) {
+                  setSelectedChannel(parsed[0]);
+                  hasAutoPlayedRef.current = true;
+                }
+              }
+              
+              return updated;
             });
           }
-        });
-      }
+        }));
+      
+      await Promise.allSettled(promises);
     };
     boot();
   }, []);
 
   const fetchWithFallback = async (url: string, sourceName: string): Promise<string> => {
     if (!url) return '';
+    
+    if (url.startsWith('data:')) {
+      try {
+        const response = await fetch(url);
+        return await response.text();
+      } catch (e) {
+        return '';
+      }
+    }
+
     const cacheKey = `kairo_cache_${sourceName}`;
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
@@ -77,7 +108,7 @@ const App = () => {
         const res = await fetch(`${proxy.url}${encodeURIComponent(url)}`);
         if (res.ok) {
           const text = await res.text();
-          if (text.includes('#EXTM3U')) {
+          if (text.includes('#EXTM3U') || text.includes('#EXTINF')) {
             localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: text }));
             return text;
           }
@@ -100,6 +131,10 @@ const App = () => {
     setSelectedChannel(channel);
     if (activeView !== 'live') setActiveView('live');
     if (isMobile) setSidebarOpen(false);
+    
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const toggleFavorite = (e: React.MouseEvent, channel: Channel) => {
@@ -124,6 +159,10 @@ const App = () => {
 
   if (isLoading) return <LoadingScreen />;
 
+  const filteredChannels = channels
+    .filter(c => c.source === activeTab && c.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .slice(0, visibleCount);
+
   const ChannelCard = ({ channel }: { channel: Channel }) => (
     <div className="relative group h-60">
       <button 
@@ -144,9 +183,14 @@ const App = () => {
           <div className="w-14 h-14 bg-black/80 rounded-2xl flex items-center justify-center p-2 border border-white/10 shadow-2xl backdrop-blur-md">
             <img src={channel.logo} className="w-full h-full object-contain" alt="" onError={(e) => e.currentTarget.src='https://api.dicebear.com/7.x/identicon/svg?seed='+channel.name} />
           </div>
-          <h4 className="text-[11px] font-black uppercase text-white truncate pr-16 tracking-[0.15em] drop-shadow-lg">
-            {channel.name}
-          </h4>
+          <div>
+            <span className="text-[8px] font-black uppercase text-indigo-400 tracking-[0.2em] mb-1 block opacity-60">
+              {channel.source}
+            </span>
+            <h4 className="text-[11px] font-black uppercase text-white truncate pr-16 tracking-[0.15em] drop-shadow-lg">
+              {channel.name}
+            </h4>
+          </div>
         </div>
       </button>
       <button 
@@ -173,9 +217,14 @@ const App = () => {
               </div>
             )}
             <div className="flex items-center gap-4 mb-10 h-14">
-              <div className="relative h-full w-72" ref={dropdownRef}>
-                <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 flex items-center justify-between hover:bg-white/[0.05] transition-all">
-                  <span className="text-[11px] font-black uppercase tracking-widest text-indigo-400 truncate mr-2">{activeTab || 'SELECT SOURCE'}</span>
+              <div className="relative h-full w-80" ref={dropdownRef}>
+                <button 
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
+                  className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 flex items-center justify-between hover:bg-white/[0.05] transition-all"
+                >
+                  <span className="text-[11px] font-black uppercase tracking-widest truncate text-slate-300">
+                    {activeTab || 'SELECT SOURCE'}
+                  </span>
                   <svg className={`w-4 h-4 text-slate-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M19 9l-7 7-7-7" /></svg>
                 </button>
                 {isDropdownOpen && (
@@ -202,9 +251,15 @@ const App = () => {
             </div>
             {activeView === 'live' && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
-                {channels.filter(c => c.source === activeTab && c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, visibleCount).map(ch => (
+                {filteredChannels.length > 0 ? filteredChannels.map(ch => (
                   <ChannelCard key={ch.id} channel={ch} />
-                ))}
+                )) : (
+                  <div className="col-span-full py-20 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white/20">
+                      No signals found in this sector
+                    </p>
+                  </div>
+                )}
               </div>
             )}
             {activeView === 'favorites' && (
@@ -238,7 +293,7 @@ const App = () => {
             <h4 className="text-[11px] font-black uppercase tracking-[0.4em] text-indigo-500 mb-8">SOURCES</h4>
             <div className="grid grid-cols-1 gap-2 overflow-y-auto max-h-[80vh] no-scrollbar">
                {DEFAULT_PLAYLISTS.map(s => (
-                 <button key={s.name} onClick={() => { setActiveTab(s.name); setActiveView('live'); setSidebarOpen(false); }} className={`p-4 rounded-xl text-left border ${activeTab === s.name ? 'bg-indigo-600 border-indigo-400' : 'bg-white/5 border-white/5'}`}>
+                 <button key={s.name} onClick={() => { setActiveTab(s.name); setActiveView('live'); setSidebarOpen(false); }} className={`p-4 rounded-xl text-left border transition-all ${activeTab === s.name ? 'bg-indigo-600 border-indigo-400' : 'bg-white/5 border-white/5'}`}>
                    <span className="text-[10px] font-black uppercase tracking-widest">{s.name}</span>
                  </button>
                ))}
@@ -249,9 +304,11 @@ const App = () => {
       <main ref={mainRef} className="flex-1 overflow-y-auto p-4 pb-20 no-scrollbar">
         {activeView === 'live' && (
           <div className="space-y-4">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 ml-1">{activeTab} Nodes</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest ml-1 text-slate-500">
+              {activeTab} Nodes
+            </h3>
             <div className="grid grid-cols-2 gap-3">
-              {channels.filter(c => c.source === activeTab).map(ch => (
+              {filteredChannels.length > 0 ? filteredChannels.map(ch => (
                 <div key={ch.id} className="relative h-44">
                   <button onClick={() => handleChannelSelect(ch)} className={`w-full h-full relative bg-[#020617] rounded-3xl border transition-all text-left overflow-hidden ${selectedChannel?.id === ch.id ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5'}`}>
                     <div className="absolute inset-0 opacity-90" style={{ backgroundImage: `url(${ch.logo})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.6)' }} />
@@ -266,7 +323,9 @@ const App = () => {
                     <svg className="w-3.5 h-3.5" fill={favorites.some(f => f.id === ch.id) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
                   </button>
                 </div>
-              ))}
+              )) : (
+                <div className="col-span-2 text-center py-10 opacity-20 text-[8px] uppercase font-black tracking-widest">No signals found</div>
+              )}
             </div>
           </div>
         )}
