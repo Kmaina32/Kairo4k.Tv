@@ -15,8 +15,13 @@ export const NASA_CHANNELS: Channel[] = [
 export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
   { name: 'Roku', url: 'https://www.apsattv.com/rok.m3u', type: 'Premium' },
   { name: 'Redbox', url: 'https://www.apsattv.com/redbox.m3u', type: 'Premium' },
+  { name: 'Free Live Sports', url: 'https://www.apsattv.com/freelivesports.m3u', type: 'Sports' },
+  { name: 'Vidaa', url: 'https://www.apsattv.com/vidaa.m3u', type: 'Vidaa' },
+  { name: 'Tubi', url: 'https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/refs/heads/main/playlists/tubi_all.m3u', type: 'Tubi' },
   { name: 'Samsung USA', url: 'https://www.apsattv.com/ssungusa.m3u', type: 'Samsung' },
   { name: 'Vizio', url: 'https://www.apsattv.com/vizio.m3u', type: 'Vizio' },
+  { name: 'TCL Plus', url: 'https://www.apsattv.com/tclplus.m3u', type: 'TCL' },
+  { name: 'Zeasn', url: 'https://www.apsattv.com/zeasn.m3u', type: 'Zeasn' },
   { name: 'Distro', url: 'https://www.apsattv.com/distro.m3u', type: 'Distro' },
   { name: 'Local Now', url: 'https://www.apsattv.com/localnow.m3u', type: 'Local' },
   { name: 'Sports', url: 'https://iptv-org.github.io/iptv/categories/sports.m3u', type: 'Sports' },

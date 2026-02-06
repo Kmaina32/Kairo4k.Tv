@@ -226,7 +226,6 @@ const App = () => {
       
       {selectedChannel && (
         <div className="flex-shrink-0 z-[60] sticky top-0 bg-[#020617] p-2 border-b border-white/5 shadow-xl">
-          {/* Increased Height by ~30%: Changed aspect-video (16/9) to aspect-[16/12] (4/3) */}
           <div className="rounded-[24px] overflow-hidden shadow-2xl border border-white/10 bg-black aspect-[16/12]">
             <VideoPlayer url={selectedChannel.url} poster={selectedChannel.logo} isTheater={false} onToggleTheater={() => {}} channelName={selectedChannel.name} />
           </div>
@@ -247,7 +246,7 @@ const App = () => {
          </div>
       </div>
 
-      <main ref={mainRef} className="flex-1 overflow-y-auto p-4 pb-24 no-scrollbar">
+      <main ref={mainRef} className="flex-1 overflow-y-auto p-4 pb-20 no-scrollbar">
         {activeView === 'live' && (
           <div className="space-y-4">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 ml-1">{activeTab} Nodes</h3>

@@ -123,6 +123,16 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
+    // Detect most compatible format for mobile (Priority: MP4 > H264 WebM > VP9 WebM)
+    const mimeTypes = [
+      'video/mp4;codecs=avc1',
+      'video/mp4',
+      'video/webm;codecs=h264',
+      'video/webm;codecs=vp9',
+      'video/webm'
+    ];
+    const supportedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+
     setIsRecording(true);
     chunksRef.current = [];
     const ctx = canvas.getContext('2d');
@@ -142,16 +152,18 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     };
     requestAnimationFrame(recordLoop);
 
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+    const recorder = new MediaRecorder(stream, { mimeType: supportedMimeType });
     mediaRecorderRef.current = recorder;
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
     recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'video/mp4' });
-      const url = URL.createObjectURL(blob);
+      const extension = supportedMimeType.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(chunksRef.current, { type: supportedMimeType });
+      const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `Kairo4K_${channelName?.replace(/\s/g, '_') || 'Broadcast'}.mp4`;
+      a.href = downloadUrl;
+      a.download = `Kairo4K_${channelName?.replace(/\s/g, '_') || 'Broadcast'}.${extension}`;
       a.click();
+      URL.revokeObjectURL(downloadUrl);
     };
     recorder.start();
   };

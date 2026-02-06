@@ -44,17 +44,17 @@ const MobileNav = ({
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-4 inset-x-4 h-16 glass rounded-[32px] border-white/10 flex items-center justify-between px-6 z-[55] shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)]">
-      <div className="flex flex-1 items-center justify-around h-8 border-r border-white/10 pr-4">
+    <nav className="lg:hidden fixed bottom-4 inset-x-4 h-14 glass rounded-[24px] border-white/10 flex items-center justify-between px-5 z-[55] shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)]">
+      <div className="flex flex-1 items-center justify-around h-7 border-r border-white/10 pr-4">
         {navItems.map((item) => (
           <button 
             key={item.view} 
             onClick={() => onViewChange(item.view)}
-            className={`flex flex-col items-center justify-center p-2 transition-all relative ${activeView === item.view ? 'text-indigo-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex flex-col items-center justify-center transition-all relative ${activeView === item.view ? 'text-indigo-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
           >
             {item.icon}
             {activeView === item.view && (
-              <div className="absolute -bottom-3 w-1 h-1 bg-indigo-500 rounded-full shadow-[0_0_10px_#6366f1]" />
+              <div className="absolute -bottom-2 w-1 h-1 bg-indigo-500 rounded-full shadow-[0_0_10px_#6366f1]" />
             )}
           </button>
         ))}
@@ -64,7 +64,7 @@ const MobileNav = ({
         onClick={(e) => { e.preventDefault(); onSidebarOpen(); }} 
         className="flex items-center justify-center pl-4 text-indigo-500 active:scale-90 transition-all group"
       >
-        <div className="w-10 h-10 bg-indigo-600/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center shadow-2xl group-hover:bg-indigo-600/20">
+        <div className="w-9 h-9 bg-indigo-600/10 border border-indigo-500/20 rounded-xl flex items-center justify-center shadow-2xl group-hover:bg-indigo-600/20">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
