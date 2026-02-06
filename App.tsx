@@ -124,23 +124,66 @@ const App = () => {
 
   if (isLoading) return <LoadingScreen />;
 
+  const ChannelCard = ({ channel }: { channel: Channel }) => (
+    <div className="relative group h-60">
+      <button 
+        onClick={() => handleChannelSelect(channel)} 
+        className={`w-full h-full relative bg-[#020617] border-2 rounded-[32px] transition-all overflow-hidden text-left ${selectedChannel?.id === channel.id ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-white/5 hover:border-white/20'}`}
+      >
+        {/* BG IMAGE - 90% VISIBLE & COLORED */}
+        <div 
+          className="absolute inset-0 opacity-90 transition-all duration-700 group-hover:scale-110" 
+          style={{ 
+            backgroundImage: `url(${channel.logo})`, 
+            backgroundSize: 'cover', 
+            backgroundPosition: 'center',
+            filter: 'contrast(1.1) brightness(0.6)' 
+          }} 
+        />
+        
+        {/* OVERLAY GRADIENT FOR TEXT READABILITY */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#020617]/90 via-transparent to-transparent z-10" />
+
+        <div className="relative z-20 h-full flex flex-col justify-between p-6">
+          {/* Top-Left Logo Box */}
+          <div className="w-14 h-14 bg-black/80 rounded-2xl flex items-center justify-center p-2 border border-white/10 shadow-2xl backdrop-blur-md">
+            <img src={channel.logo} className="w-full h-full object-contain" alt="" onError={(e) => e.currentTarget.src='https://api.dicebear.com/7.x/identicon/svg?seed='+channel.name} />
+          </div>
+
+          {/* Bottom-Left Name */}
+          <h4 className="text-[11px] font-black uppercase text-white truncate pr-16 tracking-[0.15em] drop-shadow-lg">
+            {channel.name}
+          </h4>
+        </div>
+      </button>
+
+      {/* Favorite Button - Bottom Right */}
+      <button 
+        onClick={(e) => toggleFavorite(e, channel)}
+        className={`absolute bottom-6 right-6 z-30 w-12 h-12 flex items-center justify-center rounded-2xl transition-all ${favorites.some(f => f.id === channel.id) ? 'bg-indigo-600 text-white shadow-xl' : 'bg-white/10 text-white/40 hover:text-white hover:bg-white/20 backdrop-blur-md'}`}
+      >
+        <svg className="w-5 h-5" fill={favorites.some(f => f.id === channel.id) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+      </button>
+    </div>
+  );
+
   // --- DESKTOP LAYOUT ---
   const DesktopLayout = () => (
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 overflow-hidden">
       <Header isTheater={isTheater} sidebarOpen={false} onSidebarToggle={() => {}} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar activeView={activeView} onViewChange={setActiveView} isOpen={true} />
-        <main ref={mainRef} className="flex-1 overflow-y-auto px-10 py-8 pb-24 no-scrollbar bg-slate-950/20">
+        <main ref={mainRef} className="flex-1 overflow-y-auto px-10 py-8 pb-32 no-scrollbar bg-slate-950/20">
           <div className="mx-auto w-full max-w-[1700px]">
             {selectedChannel && (
-              <div className={`mb-10 animate-in fade-in duration-700 ${isTheater ? 'fixed inset-0 z-[300] bg-black m-0' : ''}`}>
-                <div className={`shadow-2xl border border-white/5 bg-black overflow-hidden ${isTheater ? 'rounded-0 h-screen' : 'rounded-[32px] aspect-video w-full'}`}>
+              <div className={`mb-12 animate-in fade-in duration-700 ${isTheater ? 'fixed inset-0 z-[300] bg-black m-0' : ''}`}>
+                <div className={`shadow-2xl border border-white/5 bg-black overflow-hidden ${isTheater ? 'rounded-0 h-screen' : 'rounded-[40px] aspect-video w-full'}`}>
                   <VideoPlayer url={selectedChannel.url} poster={selectedChannel.logo} isTheater={isTheater} onToggleTheater={() => setIsTheater(!isTheater)} channelName={selectedChannel.name} />
                 </div>
               </div>
             )}
 
-            {/* Command Bar (Dropdown + Search) */}
+            {/* Command Bar */}
             <div className="flex items-center gap-4 mb-10 h-14">
               <div className="relative h-full w-72" ref={dropdownRef}>
                 <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="h-full w-full bg-white/[0.03] border border-white/5 rounded-2xl px-6 flex items-center justify-between hover:bg-white/[0.05] transition-all">
@@ -173,37 +216,17 @@ const App = () => {
 
             {/* Signal Grid */}
             {activeView === 'live' && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
                 {channels.filter(c => c.source === activeTab && c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, visibleCount).map(ch => (
-                  <div key={ch.id} className="relative group">
-                    <button onClick={() => handleChannelSelect(ch)} className={`w-full relative bg-white/[0.01] border-2 rounded-[28px] transition-all overflow-hidden h-60 text-left ${selectedChannel?.id === ch.id ? 'border-indigo-500 bg-indigo-500/5' : 'border-white/5 hover:border-white/10'}`}>
-                      <div className="absolute inset-0 opacity-10 grayscale group-hover:grayscale-0 transition-all" style={{ backgroundImage: `url(${ch.logo})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
-                      <div className="relative z-10 h-full flex flex-col justify-between p-6 bg-gradient-to-t from-[#020617] via-transparent to-transparent">
-                        <img src={ch.logo} className="w-12 h-12 object-contain bg-black/60 rounded-xl p-2 border border-white/5 shadow-2xl" alt="" onError={(e) => e.currentTarget.src='https://api.dicebear.com/7.x/identicon/svg?seed='+ch.name} />
-                        <h4 className="text-[10px] font-black uppercase text-white truncate leading-tight pr-8">{ch.name}</h4>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={(e) => toggleFavorite(e, ch)}
-                      className={`absolute bottom-6 right-6 z-20 p-2 rounded-lg transition-all ${favorites.some(f => f.id === ch.id) ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-slate-500 hover:text-white'}`}
-                    >
-                      <svg className="w-4 h-4" fill={favorites.some(f => f.id === ch.id) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
-                    </button>
-                  </div>
+                  <ChannelCard key={ch.id} channel={ch} />
                 ))}
               </div>
             )}
 
             {activeView === 'favorites' && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
                 {favorites.map(ch => (
-                  <button key={ch.id} onClick={() => handleChannelSelect(ch)} className="group relative bg-white/[0.01] border-2 border-white/5 rounded-[28px] transition-all overflow-hidden h-60 hover:border-indigo-500">
-                    <div className="absolute inset-0 opacity-10 transition-all" style={{ backgroundImage: `url(${ch.logo})`, backgroundSize: 'cover' }} />
-                    <div className="relative z-10 h-full flex flex-col justify-between p-6 bg-gradient-to-t from-[#020617] via-transparent to-transparent text-left">
-                      <img src={ch.logo} className="w-12 h-12 object-contain bg-black/60 rounded-xl p-2 border border-white/5" alt="" />
-                      <h4 className="text-[10px] font-black uppercase text-white truncate leading-tight">{ch.name}</h4>
-                    </div>
-                  </button>
+                  <ChannelCard key={ch.id} channel={ch} />
                 ))}
               </div>
             )}
@@ -246,12 +269,17 @@ const App = () => {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 ml-1">{activeTab} Nodes</h3>
             <div className="grid grid-cols-2 gap-3">
               {channels.filter(c => c.source === activeTab).map(ch => (
-                <div key={ch.id} className="relative">
-                  <button onClick={() => handleChannelSelect(ch)} className={`w-full bg-white/5 p-4 rounded-2xl border transition-all text-left h-40 flex flex-col justify-between ${selectedChannel?.id === ch.id ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5'}`}>
-                    <img src={ch.logo} className="w-8 h-8 rounded-lg object-contain bg-black/60 p-2" alt="" />
-                    <h4 className="text-[9px] font-black uppercase text-white truncate pr-4">{ch.name}</h4>
+                <div key={ch.id} className="relative h-44">
+                  <button onClick={() => handleChannelSelect(ch)} className={`w-full h-full relative bg-[#020617] rounded-3xl border transition-all text-left overflow-hidden ${selectedChannel?.id === ch.id ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5'}`}>
+                    <div className="absolute inset-0 opacity-90" style={{ backgroundImage: `url(${ch.logo})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.6)' }} />
+                    <div className="relative z-10 h-full flex flex-col justify-between p-4 bg-gradient-to-t from-[#020617] to-transparent">
+                      <div className="w-10 h-10 rounded-xl bg-black/80 p-1.5 border border-white/10 flex items-center justify-center">
+                        <img src={ch.logo} className="w-full h-full object-contain" alt="" />
+                      </div>
+                      <h4 className="text-[9px] font-black uppercase text-white truncate pr-4 tracking-widest drop-shadow-md">{ch.name}</h4>
+                    </div>
                   </button>
-                  <button onClick={(e) => toggleFavorite(e, ch)} className={`absolute top-4 right-4 p-1.5 rounded-lg ${favorites.some(f => f.id === ch.id) ? 'text-indigo-400' : 'text-slate-600'}`}>
+                  <button onClick={(e) => toggleFavorite(e, ch)} className={`absolute bottom-3 right-3 z-20 p-2 rounded-xl bg-black/40 backdrop-blur-md ${favorites.some(f => f.id === ch.id) ? 'text-indigo-400' : 'text-white/40'}`}>
                     <svg className="w-3.5 h-3.5" fill={favorites.some(f => f.id === ch.id) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
                   </button>
                 </div>
@@ -262,10 +290,17 @@ const App = () => {
         {activeView === 'favorites' && (
           <div className="grid grid-cols-2 gap-3">
              {favorites.length > 0 ? favorites.map(ch => (
-                <button key={ch.id} onClick={() => handleChannelSelect(ch)} className="bg-white/5 p-4 rounded-2xl border border-white/5 h-40 flex flex-col justify-between text-left">
-                   <img src={ch.logo} className="w-8 h-8 rounded-lg object-contain bg-black/60 p-2" alt="" />
-                   <h4 className="text-[9px] font-black uppercase text-white truncate">{ch.name}</h4>
-                </button>
+                <div key={ch.id} className="relative h-44">
+                  <button onClick={() => handleChannelSelect(ch)} className="w-full h-full relative bg-[#020617] rounded-3xl border border-white/5 text-left overflow-hidden">
+                    <div className="absolute inset-0 opacity-90" style={{ backgroundImage: `url(${ch.logo})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.6)' }} />
+                    <div className="relative z-10 h-full flex flex-col justify-between p-4 bg-gradient-to-t from-[#020617] to-transparent">
+                      <div className="w-10 h-10 rounded-xl bg-black/80 p-1.5 border border-white/10 flex items-center justify-center">
+                        <img src={ch.logo} className="w-full h-full object-contain" alt="" />
+                      </div>
+                      <h4 className="text-[9px] font-black uppercase text-white truncate pr-4 tracking-widest drop-shadow-md">{ch.name}</h4>
+                    </div>
+                  </button>
+                </div>
              )) : <div className="col-span-2 text-center py-20 opacity-30 text-[9px] uppercase font-black tracking-widest">Locked Signals Empty</div>}
           </div>
         )}
