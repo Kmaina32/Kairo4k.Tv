@@ -14,8 +14,24 @@ export interface PlaylistSource {
   type: string;
 }
 
-export interface AIResponse {
-  summary: string;
-  recommendations: string[];
-  categoryAnalysis: string;
+export interface UserProfile {
+  id: string; // UUID format
+  username: string;
+  rank: 'Operator' | 'Admin' | 'Guest';
+  joinedAt: number;
+  lastSync: number;
+}
+
+export interface ProxyStatus {
+  url: string;
+  status: 'healthy' | 'degraded' | 'offline';
+  latency: number;
+}
+
+export interface CloudStats {
+  globalUsers: number;
+  activeSignals: number;
+  serverLoad: number;
+  dbStatus: 'connected' | 'reconnecting' | 'error';
+  postgresLatency: number;
 }
