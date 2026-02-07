@@ -20,6 +20,14 @@ interface MoviesPageProps {
     onBack: () => void;
 }
 
+const CLOUDFLARE_BASE_URL = 'https://pub-a84b309a59b0432d9479ce0138fe01dd.r2.dev/';
+
+const getFullUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    return CLOUDFLARE_BASE_URL + url.replace(/^\//, '');
+};
+
 const MoviesPage = ({ onBack }: MoviesPageProps) => {
     const [media, setMedia] = useState<MediaItem[]>([]);
     const [episodes, setEpisodes] = useState<MediaItem[]>([]);
@@ -102,8 +110,8 @@ const MoviesPage = ({ onBack }: MoviesPageProps) => {
                     {currentPlayingItem ? (
                         <div className="w-full h-full rounded-[2.5rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/5">
                             <VideoPlayer
-                                url={currentPlayingItem.stream_url}
-                                poster={currentPlayingItem.cover_url || selectedMedia.cover_url}
+                                url={getFullUrl(currentPlayingItem.stream_url)}
+                                poster={getFullUrl(currentPlayingItem.cover_url || selectedMedia.cover_url)}
                                 isTheater={isTheater}
                                 onToggleTheater={() => setIsTheater(!isTheater)}
                                 channelName={currentPlayingItem.title}
@@ -242,35 +250,51 @@ const MoviesPage = ({ onBack }: MoviesPageProps) => {
             </div>
 
             {/* CONTENT GRID */}
-            <div className="px-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
-                {filteredMedia.map(item => (
-                    <button
-                        key={item.id}
-                        onClick={() => handleSelectMedia(item)}
-                        className="group relative aspect-[2/3] rounded-3xl overflow-hidden bg-white/5 border border-white/5 hover:border-orange-500/50 transition-all hover:scale-105 hover:z-10 shadow-2xl"
-                    >
-                        {item.cover_url ? (
-                            <img src={item.cover_url} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-white/5">
-                                <span className="text-4xl">🎬</span>
+            <div className="px-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 min-h-[40vh]">
+                {loading ? (
+                    // Skeleton Grid
+                    Array.from({ length: 12 }).map((_, i) => (
+                        <div key={i} className="aspect-[2/3] rounded-3xl bg-white/5 animate-pulse border border-white/5 p-4 flex flex-col justify-end gap-3">
+                            <div className="w-1/3 h-2 bg-white/10 rounded-full" />
+                            <div className="w-full h-4 bg-white/10 rounded-full" />
+                            <div className="w-1/2 h-3 bg-white/10 rounded-full" />
+                        </div>
+                    ))
+                ) : filteredMedia.length > 0 ? (
+                    filteredMedia.map(item => (
+                        <button
+                            key={item.id}
+                            onClick={() => handleSelectMedia(item)}
+                            className="group relative aspect-[2/3] rounded-3xl overflow-hidden bg-white/5 border border-white/5 hover:border-orange-500/50 transition-all hover:scale-105 hover:z-10 shadow-2xl"
+                        >
+                            {item.cover_url ? (
+                                <img
+                                    src={getFullUrl(item.cover_url)}
+                                    alt={item.title}
+                                    loading="lazy"
+                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100"
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                    <span className="text-4xl opacity-20">🎬</span>
+                                </div>
+                            )}
+
+                            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity" />
+
+                            <div className="absolute top-3 right-3">
+                                <span className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center border border-white/10 opacity-0 group-hover:opacity-100 transition-all delay-100 transform translate-y-2 group-hover:translate-y-0 text-white">
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                </span>
                             </div>
-                        )}
 
-                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60 group-hover:opacity-90 transition-opacity" />
-
-                        <div className="absolute top-3 right-3">
-                            <span className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center border border-white/10 opacity-0 group-hover:opacity-100 transition-all delay-100 transform translate-y-2 group-hover:translate-y-0 text-white">
-                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                            </span>
-                        </div>
-
-                        <div className="absolute bottom-0 left-0 right-0 p-5 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
-                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 mb-2 block">{item.release_year}</span>
-                            <h3 className="text-sm font-black text-white leading-tight line-clamp-2">{item.title}</h3>
-                        </div>
-                    </button>
-                ))}
+                            <div className="absolute bottom-0 left-0 right-0 p-5 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
+                                <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 mb-2 block">{item.release_year}</span>
+                                <h3 className="text-sm font-black text-white leading-tight line-clamp-2 uppercase tracking-wide">{item.title}</h3>
+                            </div>
+                        </button>
+                    ))
+                ) : null}
             </div>
 
             {filteredMedia.length === 0 && (

@@ -107,7 +107,10 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     setQualityLevels([]);
 
     const initPlayer = () => {
-      if (window.Hls && window.Hls.isSupported()) {
+      const isHLS = url.toLowerCase().includes('.m3u8');
+      const isStaticVideo = url.toLowerCase().match(/\.(mp4|m4v|webm|mov|ogg)$/);
+
+      if (window.Hls && window.Hls.isSupported() && isHLS && !isStaticVideo) {
         const hls = new window.Hls({
           enableWorker: true,
           lowLatencyMode: true,
@@ -281,6 +284,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         poster={poster}
         className="w-full h-full object-contain"
         onClick={handleTogglePlay}
+        crossOrigin="anonymous"
         playsInline
       />
 
