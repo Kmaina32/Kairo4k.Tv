@@ -1,6 +1,8 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import VideoControls from './VideoControls';
+import CommandDeck from './CommandDeck';
+import StreamHUD from './StreamHUD';
+import StatsMonitor from './StatsMonitor';
 
 declare global {
   interface Window {
@@ -19,16 +21,24 @@ interface VideoPlayerProps {
 const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const staticCanvasRef = useRef<HTMLCanvasElement>(null); // For "static" effect
+
+  // State
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
-  const [playbackRate, setPlaybackRate] = useState(1);
   const [isRecording, setIsRecording] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [showStats, setShowStats] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
-  const [qualityLevels, setQualityLevels] = useState<any[]>([]);
-  const [currentLevel, setCurrentLevel] = useState<number>(-1);
-  
+  const [isStaticActive, setIsStaticActive] = useState(false);
+
+  // Stats
+  const [stats, setStats] = useState({ bandwidth: 0, buffer: 0, latency: 0 });
+  const [qualityLabel, setQualityLabel] = useState('HD');
+  const [qualityLevels, setQualityLevels] = useState<{ index: number; height: number }[]>([]);
+  const [currentQuality, setCurrentQuality] = useState(-1);
+
   const hlsRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -42,44 +52,100 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     }, 4000);
   }, [isPlaying]);
 
+  // Static Effect Draw Loop
+  const drawStatic = useCallback(() => {
+    const canvas = staticCanvasRef.current;
+    if (!canvas || !isStaticActive) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const idata = ctx.createImageData(w, h);
+    const buffer32 = new Uint32Array(idata.data.buffer);
+    const len = buffer32.length;
+
+    for (let i = 0; i < len; i++) {
+      if (Math.random() < 0.1) {
+        buffer32[i] = 0xffffffff;
+      } else {
+        buffer32[i] = 0x00000000;
+      }
+    }
+    ctx.putImageData(idata, 0, 0);
+    requestAnimationFrame(drawStatic);
+  }, [isStaticActive]);
+
   useEffect(() => {
+    if (isStaticActive) {
+      requestAnimationFrame(drawStatic);
+    }
+  }, [isStaticActive, drawStatic]);
+
+  useEffect(() => {
+    // Trigger static effect on URL change
+    setIsStaticActive(true);
+    const t = setTimeout(() => setIsStaticActive(false), 800);
+
     const video = videoRef.current;
     if (!video) return;
+
     setErrorStatus(null);
     setQualityLevels([]);
-    setCurrentLevel(-1);
 
     const initPlayer = () => {
       if (window.Hls && window.Hls.isSupported()) {
-        const hls = new window.Hls({ 
-          enableWorker: true, 
+        const hls = new window.Hls({
+          enableWorker: true,
           lowLatencyMode: true,
-          capLevelToPlayerSize: true
         });
         hlsRef.current = hls;
         hls.loadSource(url);
         hls.attachMedia(video);
-        
-        hls.on(window.Hls.Events.MANIFEST_PARSED, (event: any, data: any) => {
-          setQualityLevels(data.levels || []);
-          video.play().catch(() => {});
+
+        hls.on(window.Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
+          video.play().catch(() => { });
           setIsPlaying(true);
+          if (hls.levels) {
+            setQualityLevels(hls.levels.map((l: any, i: number) => ({ index: i, height: l.height })));
+          }
         });
 
-        hls.on(window.Hls.Events.LEVEL_SWITCHED, (event: any, data: any) => {
-          if (hls.autoLevelEnabled) setCurrentLevel(-1);
+        // Hook up stats
+        hls.on(window.Hls.Events.FRAG_LOADED, (_: any, data: any) => {
+          if (data && data.stats) {
+            setStats(prev => ({
+              ...prev,
+              bandwidth: data.stats.bwEstimate,
+              latency: data.stats.latency
+            }));
+          }
+        });
+
+        // Monitor buffer
+        const checkBuffer = setInterval(() => {
+          if (video.buffered.length > 0) {
+            setStats(prev => ({ ...prev, buffer: video.buffered.end(video.buffered.length - 1) - video.currentTime }));
+          }
+        }, 1000);
+
+        hls.on(window.Hls.Events.LEVEL_SWITCHED, (_: any, data: any) => {
+          const level = hls.levels[data.level];
+          if (level) setQualityLabel(level.height + 'P');
         });
 
         hls.on(window.Hls.Events.ERROR, (_: any, data: any) => {
           if (data.fatal) {
             if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-              setErrorStatus("Signal Lost: Retrying...");
+              setErrorStatus("SGNL_LOST");
               hls.startLoad();
             } else {
               hls.recoverMediaError();
             }
           }
         });
+
+        return () => clearInterval(checkBuffer);
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
       }
@@ -88,8 +154,24 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     initPlayer();
     return () => {
       if (hlsRef.current) hlsRef.current.destroy();
+      clearTimeout(t);
     };
   }, [url]);
+
+  const handleSetQuality = (index: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = index;
+      setCurrentQuality(index);
+    }
+  };
+
+  const handleTogglePiP = () => {
+    if (document.pictureInPictureElement) {
+      document.exitPictureInPicture();
+    } else if (videoRef.current) {
+      videoRef.current.requestPictureInPicture();
+    }
+  };
 
   const handleTogglePlay = () => {
     if (videoRef.current) {
@@ -103,66 +185,41 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     }
   };
 
-  const handleVolumeChange = (newVol: number) => {
-    if (videoRef.current) {
-      videoRef.current.volume = newVol;
-      setVolume(newVol);
-      if (newVol > 0) setIsMuted(false);
-    }
-  };
-
-  const handleQualityChange = (level: number) => {
-    if (hlsRef.current) {
-      hlsRef.current.currentLevel = level;
-      setCurrentLevel(level);
-    }
-  };
-
   const startRecording = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    const mimeTypes = [
-      'video/mp4;codecs=avc1',
-      'video/mp4',
-      'video/webm;codecs=h264',
-      'video/webm;codecs=vp9',
-      'video/webm'
-    ];
-    const supportedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
-
     setIsRecording(true);
     chunksRef.current = [];
     const ctx = canvas.getContext('2d');
     const stream = canvas.captureStream(30);
-    
+
     const recordLoop = () => {
       if (!isRecording && mediaRecorderRef.current?.state !== 'recording') return;
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'rgba(99, 102, 241, 0.9)';
-        ctx.font = 'bold 40px Inter, Arial';
-        ctx.fillText('KAIRO 4K', canvas.width - 240, canvas.height - 60);
+        // Add overlay to recording
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 30px monospace';
+        ctx.fillText('REC // KAIRO_TERMINAL', 40, 60);
       }
       requestAnimationFrame(recordLoop);
     };
     requestAnimationFrame(recordLoop);
 
-    const recorder = new MediaRecorder(stream, { mimeType: supportedMimeType });
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
     mediaRecorderRef.current = recorder;
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
     recorder.onstop = () => {
-      const extension = supportedMimeType.includes('mp4') ? 'mp4' : 'webm';
-      const blob = new Blob(chunksRef.current, { type: supportedMimeType });
+      const blob = new Blob(chunksRef.current, { type: 'video/webm' });
       const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
-      a.download = `Kairo4K_${channelName?.replace(/\s/g, '_') || 'Broadcast'}.${extension}`;
+      a.download = `CAPTURE_${Date.now()}.webm`;
       a.click();
-      URL.revokeObjectURL(downloadUrl);
     };
     recorder.start();
   };
@@ -173,52 +230,67 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
   };
 
   return (
-    <div 
-      className={`relative w-full h-full overflow-hidden bg-black group select-none transition-all duration-500
-        ${isTheater ? 'fixed inset-0 z-[200] h-screen' : 'rounded-[32px]'}`}
+    <div
+      className={`relative w-full h-full overflow-hidden bg-black select-none group
+        ${isTheater ? 'fixed inset-0 z-[200]' : 'rounded-[2rem] border-2 border-slate-800'}`}
       onMouseMove={resetControlsTimeout}
     >
       <video
         ref={videoRef}
         poster={poster}
-        className="w-full h-full object-contain cursor-pointer"
+        className="w-full h-full object-contain"
         onClick={handleTogglePlay}
         playsInline
       />
-      
+
+      {/* STATIC INTERFERENCE LAYER */}
+      {/* STATIC INTERFERENCE LAYER (DISABLED) */}
+      {/* 
+      <canvas
+        ref={staticCanvasRef}
+        width={320} height={180}
+        className={`absolute inset-0 w-full h-full pointer-events-none mix-blend-screen opacity-50 transition-opacity duration-300 ${isStaticActive ? 'opacity-50' : 'opacity-0'}`}
+      />
+      */}
+
+      {/* INVISIBLE CANVAS FOR RECORDING */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* MINIMAL BRANDING - Adjusted for mobile position */}
-      <div className="absolute top-4 md:top-6 left-5 md:left-8 z-30 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity">
-        <div className="flex items-center space-x-1.5">
-           <span className="text-[10px] md:text-lg font-black uppercase tracking-[0.2em] text-white">KAIRO</span>
-           <span className="text-[10px] md:text-lg font-black text-indigo-500 tracking-tighter">4K</span>
-        </div>
-      </div>
+      {/* HEADS UP DISPLAY */}
+      <StreamHUD
+        channelName={channelName || 'UNKNOWN_SOURCE'}
+        isRecording={isRecording}
+        quality={qualityLabel}
+      />
 
+      {/* STATS MONITOR PROBE */}
+      <StatsMonitor stats={stats} visible={showStats} />
+
+      {/* ERROR OVERLAY */}
       {errorStatus && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center">
-          <span className="text-[10px] font-black uppercase tracking-[0.5em] text-indigo-400 animate-pulse">{errorStatus}</span>
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-16 h-16 border-4 border-t-red-500 border-r-transparent border-b-red-500 border-l-transparent rounded-full animate-spin" />
+            <span className="text-[12px] font-black uppercase tracking-[0.5em] text-red-500 animate-pulse">{errorStatus}</span>
+          </div>
         </div>
       )}
 
-      <VideoControls 
+      {/* COMMAND DECK */}
+      <CommandDeck
         isPlaying={isPlaying}
         isMuted={isMuted}
         volume={volume}
-        playbackRate={playbackRate}
         isRecording={isRecording}
-        isTheater={isTheater}
         qualityLevels={qualityLevels}
-        currentLevel={currentLevel}
+        currentQuality={currentQuality}
+        onSetQuality={handleSetQuality}
+        onTogglePiP={handleTogglePiP}
         onTogglePlay={handleTogglePlay}
-        onToggleMute={() => { if(videoRef.current) { videoRef.current.muted = !isMuted; setIsMuted(!isMuted); } }}
-        onVolumeChange={handleVolumeChange}
-        onPlaybackRateChange={(r) => { if(videoRef.current) { videoRef.current.playbackRate = r; setPlaybackRate(r); } }}
-        onQualityChange={handleQualityChange}
-        onToggleTheater={onToggleTheater}
+        onToggleMute={() => { if (videoRef.current) { videoRef.current.muted = !isMuted; setIsMuted(!isMuted); } }}
+        onVolumeChange={(val) => { if (videoRef.current) { videoRef.current.volume = val; setVolume(val); } }}
         onToggleFullscreen={() => videoRef.current?.requestFullscreen()}
-        onTogglePIP={async () => { try { if (videoRef.current !== document.pictureInPictureElement) await videoRef.current?.requestPictureInPicture(); else await document.exitPictureInPicture(); } catch(e){} }}
+        onToggleStats={() => setShowStats(!showStats)}
         onStartRecording={startRecording}
         onStopRecording={stopRecording}
         showControls={showControls}
