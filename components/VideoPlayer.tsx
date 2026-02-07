@@ -45,6 +45,8 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
   const [showStats, setShowStats] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [isStaticActive, setIsStaticActive] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const lastUrlRef = useRef<string>('');
 
   // Stats
   const [stats, setStats] = useState({ bandwidth: 0, buffer: 0, latency: 0 });
@@ -107,8 +109,60 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     setQualityLevels([]);
 
     const initPlayer = () => {
+      if (lastUrlRef.current === url) return; // Prevent redundant reloads
+      lastUrlRef.current = url;
+
       const isHLS = url.toLowerCase().includes('.m3u8');
       const isStaticVideo = url.toLowerCase().match(/\.(mp4|m4v|webm|mov|ogg)$/);
+
+      // Reset buffering state on source change
+      setIsBuffering(true);
+
+      const onWaiting = () => {
+        console.log('🔴 Video waiting (buffering)');
+        setIsBuffering(true);
+      };
+      const onPlaying = () => {
+        console.log('🟢 Video playing');
+        setIsBuffering(false);
+        setErrorStatus(null);
+      };
+      const onCanPlay = () => {
+        console.log('🟡 Video can play');
+        setIsBuffering(false);
+      };
+      const onLoadedData = () => {
+        console.log('🔵 Video loaded data');
+        setIsBuffering(false);
+      };
+      const onStalled = () => {
+        console.log('🟠 Video stalled');
+        setIsBuffering(true);
+      };
+
+      const onTimeUpdate = () => {
+        // If movie is progressing, it's definitely not "locking"
+        if (video.currentTime > 0) {
+          setIsBuffering(false);
+          setErrorStatus(null);
+        }
+      };
+
+      video.addEventListener('waiting', onWaiting);
+      video.addEventListener('playing', onPlaying);
+      video.addEventListener('canplay', onCanPlay);
+      video.addEventListener('loadeddata', onLoadedData);
+      video.addEventListener('stalled', onStalled);
+      video.addEventListener('timeupdate', onTimeUpdate);
+
+      const cleanupEvents = () => {
+        video.removeEventListener('waiting', onWaiting);
+        video.removeEventListener('playing', onPlaying);
+        video.removeEventListener('canplay', onCanPlay);
+        video.removeEventListener('loadeddata', onLoadedData);
+        video.removeEventListener('stalled', onStalled);
+        video.removeEventListener('timeupdate', onTimeUpdate);
+      };
 
       if (window.Hls && window.Hls.isSupported() && isHLS && !isStaticVideo) {
         const hls = new window.Hls({
@@ -125,14 +179,16 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
           abrEwmaSlowLive: 15,
         });
         hlsRef.current = hls;
-        // CORS Note: Ensure your HLS manifest and segments are served with appropriate CORS headers
-        // if they are on a different domain than your web application.
         hls.loadSource(url);
         hls.attachMedia(video);
 
         hls.on(window.Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
+          setIsBuffering(false); // Clear initial buffering when manifest is ready
           video.play().catch(e => {
             if (e.name !== 'AbortError') console.error('Playback failed:', e);
+          }).then(() => {
+            setIsBuffering(false);
+            setErrorStatus(null);
           });
           setIsPlaying(true);
           setErrorStatus(null);
@@ -167,7 +223,8 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         hls.on(window.Hls.Events.ERROR, (_: any, data: any) => {
           if (data.fatal) {
             if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-              setErrorStatus("BUFFERING"); // Subtle label
+              setErrorStatus("BUFFERING");
+              setIsBuffering(true);
               hls.startLoad();
             } else {
               hls.recoverMediaError();
@@ -175,19 +232,29 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
           }
         });
 
-        return () => clearInterval(checkBuffer);
+        return () => {
+          clearInterval(checkBuffer);
+          cleanupEvents();
+        };
       } else {
         // Fallback for native HLS (Safari) or direct MP4
         video.src = url;
         const onLoaded = () => {
+          setIsBuffering(false); // Clear buffering when metadata loads
           video.play().catch(e => {
             if (e.name !== 'AbortError') console.error('Playback failed:', e);
+          }).then(() => {
+            setIsBuffering(false);
+            setErrorStatus(null);
+            setIsPlaying(true);
           });
-          setIsPlaying(true);
           setErrorStatus(null);
         };
         video.addEventListener('loadedmetadata', onLoaded);
-        return () => video.removeEventListener('loadedmetadata', onLoaded);
+        return () => {
+          video.removeEventListener('loadedmetadata', onLoaded);
+          cleanupEvents();
+        };
       }
     };
 
@@ -227,6 +294,16 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
       }
     }
   };
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && isPlaying && videoRef.current?.paused) {
+        videoRef.current.play().catch(() => { });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [isPlaying]);
 
   const startRecording = () => {
     const video = videoRef.current;
@@ -311,15 +388,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         quality={qualityLabel}
       />
 
-      {/* SUBTLE LOADING / BUFFERING INDICATOR */}
-      {(errorStatus === "BUFFERING" || (isPlaying && stats.buffer < 0.5)) && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 pointer-events-none">
-          <div className="flex flex-col items-center gap-3 bg-black/60 backdrop-blur-md px-6 py-4 rounded-3xl border border-white/10 animate-in zoom-in duration-300">
-            <div className="w-8 h-8 border-2 border-t-orange-500 border-r-transparent border-b-orange-500 border-l-transparent rounded-full animate-spin" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">Locking Signal...</span>
-          </div>
-        </div>
-      )}
+      {/* SUBTLE LOADING / BUFFERING INDICATOR REMOVED */}
 
       {/* COMMAND DECK */}
       <CommandDeck

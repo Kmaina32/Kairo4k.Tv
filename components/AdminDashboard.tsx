@@ -5,6 +5,9 @@ import NexusChat from './NexusChat';
 import { supabase } from '../services/supabaseClient';
 import AddPlaylistModal from './AddPlaylistModal';
 import MediaModal from './AddMediaModal';
+import MediaUploadPanel from './MediaUploadPanel';
+import StorageAnalytics from './StorageAnalytics';
+import CommandDeck from './CommandDeck';
 
 interface AdminDashboardProps {
     stats: CloudStats | null;
@@ -16,7 +19,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     const [isAuditing, setIsAuditing] = useState(false);
 
     // Persist admin view in localStorage
-    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media'>(() => {
+    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'upload' | 'storage'>(() => {
         const saved = localStorage.getItem('nexus_admin_view');
         return (saved as any) || 'overview';
     });
@@ -38,7 +41,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     }, [mediaCategory]);
 
     // Modals
-    const [isAddPlaylistOpen, setIsAddPlaylistOpen] = useState(false);
+    const [playlistModalState, setPlaylistModalState] = useState<{ open: boolean, initialData?: any }>({ open: false });
     const [mediaModalState, setMediaModalState] = useState<{ open: boolean, initialData?: any, parentId?: string }>({ open: false });
 
     useEffect(() => {
@@ -126,6 +129,8 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         { id: 'users' as const, label: 'Operator Nodes', icon: <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /> },
         { id: 'playlists' as const, label: 'Signal Sources', icon: <path d="M13 10V3L4 14h7v7l9-11h-7z" /> },
         { id: 'media' as const, label: 'Media Library', icon: <path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /> },
+        { id: 'upload' as const, label: 'Upload to R2', icon: <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /> },
+        { id: 'storage' as const, label: 'R2 Storage', icon: <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /> },
     ];
 
     const statsCards = [
@@ -137,14 +142,14 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
 
     return (
         <div className="fixed inset-0 z-50 flex h-screen bg-[#020617] text-white overflow-hidden font-mono">
-            {/* ADMIN SIDEBAR */}
-            <aside className="w-72 bg-black/40 border-r border-white/5 flex flex-col p-6 backdrop-blur-xl z-20">
+            {/* ADMIN SIDEBAR - DESKTOP ONLY */}
+            <aside className="hidden lg:flex w-72 bg-black/40 border-r border-white/5 flex-col p-6 backdrop-blur-xl z-20">
                 <div className="flex items-center gap-3 mb-10 px-2">
                     <div className="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
                         <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
                     </div>
                     <div>
-                        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">Nexus Admin</h2>
+                        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">Kairo 4k Admin</h2>
                         <span className="text-[8px] font-mono text-orange-500/60 uppercase tracking-widest">Level 5 Access</span>
                     </div>
                 </div>
@@ -175,9 +180,23 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                 </div>
             </aside>
 
+            {/* MOBILE HEADER */}
+            <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/95 to-transparent z-[60] flex items-center justify-center px-4 pointer-events-none animate-in slide-in-from-top-4">
+                <h1 className="text-2xl font-black tracking-[0.2em] drop-shadow-md uppercase text-orange-500">
+                    KAIRO<span className="text-white"> 4K</span>
+                </h1>
+
+                {/* Exit Button (Absolute Positioned) */}
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-auto">
+                    <button onClick={onClose} className="p-2 bg-white/5 rounded-lg text-slate-400 hover:text-white backdrop-blur-md border border-white/5">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            </header>
+
             {/* MAIN CONTENT AREA */}
-            <main className="flex-1 overflow-y-auto no-scrollbar relative p-8 lg:p-12">
-                <div className="max-w-7xl mx-auto pb-32">
+            <main className="flex-1 overflow-y-auto no-scrollbar relative p-4 md:p-8 lg:p-12 pb-24 lg:pb-12 pt-20 lg:pt-12">
+                <div className="max-w-7xl mx-auto pb-8 lg:pb-0">
 
                     {/* VIEW HEADER */}
                     <div className="flex items-end justify-between mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -194,40 +213,9 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                         </div>
                     </div>
 
-                    {/* OVERVIEW */}
+                    {/* OVERVIEW (COMMAND DECK) */}
                     {adminView === 'overview' && (
-                        <div className="animate-in fade-in zoom-in-95 duration-500">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-                                {statsCards.map((card, i) => (
-                                    <div key={i} className="bg-white/5 p-8 rounded-[32px] border border-white/5 relative overflow-hidden group hover:bg-white/10 transition-all">
-                                        <div className={`absolute top-0 left-0 w-1 h-full bg-current ${card.color} opacity-30 group-hover:opacity-100 transition-opacity`} />
-                                        <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest block mb-4">{card.label}</span>
-                                        <div className="flex items-baseline gap-3">
-                                            <span className="text-3xl font-black tracking-tight text-white">{card.value}</span>
-                                            {card.trend && <span className={`text-[9px] font-bold ${card.trend === 'NEW' ? 'text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded' : card.trend.startsWith('+') ? 'text-emerald-400' : 'text-blue-400'}`}>{card.trend}</span>}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                <div className="lg:col-span-1 bg-white/5 rounded-[40px] p-8 border border-white/5 h-fit">
-                                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-6">Quick Actions</h3>
-                                    <button
-                                        onClick={handleRunAudit}
-                                        disabled={isAuditing}
-                                        className={`w-full py-5 rounded-2xl flex items-center justify-center gap-3 transition-all font-black uppercase text-[10px] tracking-widest mb-4 ${isAuditing ? 'bg-orange-600/50 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-500 shadow-xl shadow-orange-900/20'}`}
-                                    >
-                                        {isAuditing ? 'Running Diagnostics...' : 'System Audit'}
-                                    </button>
-                                    <button className="w-full py-5 rounded-2xl border border-white/10 flex items-center justify-center gap-3 hover:bg-white/5 transition-all font-black uppercase text-[10px] tracking-widest text-slate-400 hover:text-white">
-                                        Flush DNS Cache
-                                    </button>
-                                </div>
-                                <div className="lg:col-span-2">
-                                    <NexusChat user={user} />
-                                </div>
-                            </div>
-                        </div>
+                        <CommandDeck />
                     )}
 
                     {/* MEDIA LIBRARY */}
@@ -324,12 +312,11 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                         </div>
                     )}
 
-                    {/* PLAYLISTS VIEW (Re-styled) */}
                     {adminView === 'playlists' && (
                         <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
                             <div className="flex justify-end">
                                 <button
-                                    onClick={() => setIsAddPlaylistOpen(true)}
+                                    onClick={() => setPlaylistModalState({ open: true })}
                                     className="px-8 py-4 bg-orange-600 hover:bg-orange-500 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/20"
                                 >
                                     Add New Source
@@ -351,6 +338,12 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                                             <p className="text-[9px] font-mono text-slate-600 truncate pl-14">{p.url}</p>
                                         </div>
                                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => setPlaylistModalState({ open: true, initialData: p })}
+                                                className="p-3 bg-blue-500/10 rounded-xl text-blue-400 hover:bg-blue-500 hover:text-white transition-all"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            </button>
                                             <button
                                                 onClick={() => handleDeletePlaylist(p.id, p.name)}
                                                 className="p-3 bg-red-500/10 rounded-xl text-red-400 hover:bg-red-500 hover:text-white transition-all"
@@ -388,17 +381,35 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                             ))}
                         </div>
                     )}
+
+                    {/* R2 UPLOAD VIEW */}
+                    {adminView === 'upload' && (
+                        <div className="animate-in fade-in zoom-in-95 duration-500">
+                            <MediaUploadPanel onUploadComplete={() => {
+                                // Optionally switch to library or show success notification
+                                cloudService.logEvent(user.username, 'Uploaded media to R2');
+                            }} />
+                        </div>
+                    )}
+
+                    {/* R2 STORAGE ANALYTICS VIEW */}
+                    {adminView === 'storage' && (
+                        <div className="animate-in fade-in zoom-in-95 duration-500">
+                            <StorageAnalytics />
+                        </div>
+                    )}
                 </div>
             </main>
 
             {/* MODALS */}
-            {isAddPlaylistOpen && (
+            {playlistModalState.open && (
                 <AddPlaylistModal
-                    onClose={() => setIsAddPlaylistOpen(false)}
+                    onClose={() => setPlaylistModalState({ open: false })}
                     onSuccess={() => {
                         fetchPlaylists();
-                        cloudService.logEvent(user.username, 'Added new playlist source');
+                        cloudService.logEvent(user.username, 'Updated playlist source');
                     }}
+                    initialData={playlistModalState.initialData}
                 />
             )}
             {mediaModalState.open && (
@@ -412,6 +423,31 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     parentId={mediaModalState.parentId}
                 />
             )}
+            {/* MOBILE BOTTOM NAV */}
+            <div className="lg:hidden fixed bottom-6 left-4 right-4 z-50">
+                <div className="bg-black/90 backdrop-blur-xl border border-white/10 rounded-3xl p-2 shadow-2xl flex items-center justify-between overflow-x-auto no-scrollbar">
+                    {navItems.map(item => (
+                        <button
+                            key={item.id}
+                            onClick={() => setAdminView(item.id)}
+                            className={`flex flex-col items-center justify-center min-w-[3.5rem] p-3 rounded-2xl transition-all ${adminView === item.id ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:text-white'}`}
+                        >
+                            <svg className="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                {item.icon}
+                            </svg>
+                        </button>
+                    ))}
+                    <div className="w-px h-8 bg-white/10 mx-2" />
+                    <button
+                        onClick={onClose}
+                        className="flex flex-col items-center justify-center min-w-[3.5rem] p-3 rounded-2xl text-red-400 hover:bg-red-500/10 transition-all"
+                    >
+                        <svg className="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
         </div>
     );
 };

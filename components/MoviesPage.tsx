@@ -34,13 +34,33 @@ const MoviesPage = ({ onBack }: MoviesPageProps) => {
     const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
     const [activeEpisode, setActiveEpisode] = useState<MediaItem | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [activeCategory, setActiveCategory] = useState(() => {
+        // On mobile, always default to 'Movie'
+        const isMobileDevice = window.innerWidth < 768;
+        if (isMobileDevice) return 'Movie';
         return localStorage.getItem('nexus_media_category') || 'All';
     });
 
     useEffect(() => {
-        localStorage.setItem('nexus_media_category', activeCategory);
-    }, [activeCategory]);
+        const handleResize = () => {
+            const mobile = window.innerWidth < 768;
+            setIsMobile(mobile);
+            // If switching to mobile, force Movie category
+            if (mobile && activeCategory !== 'Movie') {
+                setActiveCategory('Movie');
+            }
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    useEffect(() => {
+        // On mobile, don't save category to localStorage (always Movie)
+        if (!isMobile) {
+            localStorage.setItem('nexus_media_category', activeCategory);
+        }
+    }, [activeCategory, isMobile]);
     const [isTheater, setIsTheater] = useState(false);
 
     useEffect(() => {
@@ -94,21 +114,25 @@ const MoviesPage = ({ onBack }: MoviesPageProps) => {
     if (selectedMedia) {
         return (
             <div className="fixed inset-0 z-50 bg-[#020617] flex flex-col animate-in fade-in duration-500 overflow-y-auto no-scrollbar pb-32">
-                {/* BACK BUTTON */}
-                <div className="absolute top-8 left-8 z-[60]">
-                    <button
-                        onClick={() => { setSelectedMedia(null); setActiveEpisode(null); setIsTheater(false); }}
-                        className="p-4 bg-white/10 hover:bg-orange-600 rounded-2xl backdrop-blur-md text-white transition-all group flex items-center gap-3 border border-white/5"
-                    >
-                        <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                        <span className="text-[10px] font-black uppercase tracking-widest hidden md:block">Exit Theater</span>
-                    </button>
+                {/* HEADER WITH APP NAME (LEFT ALIGNED) */}
+                <div className="absolute top-0 left-0 right-0 z-[60] h-16 flex items-center justify-start px-4 md:px-8 bg-gradient-to-b from-black/95 to-transparent">
+                    <h1 className="text-xl md:text-2xl font-black tracking-[0.2em] drop-shadow-md uppercase kairo-cyber-glow">
+                        KAIRO<span className="text-white">4K</span>
+                    </h1>
                 </div>
 
-                {/* PLAYER SPACE - Added Top Padding */}
-                <div className={`w-full pt-24 transition-all duration-700 ${isTheater ? 'min-h-screen px-4 pb-4' : 'aspect-video lg:h-[80vh] px-8 lg:px-12'} relative`}>
+                {/* PLAYER SPACE */}
+                <div className={`w-full pt-16 md:pt-24 transition-all duration-700 ${isTheater ? 'min-h-screen px-4 pb-4' : isMobile ? 'aspect-video px-0' : 'aspect-video lg:h-[80vh] px-8 lg:px-12'} relative`}>
                     {currentPlayingItem ? (
-                        <div className="w-full h-full rounded-[2.5rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/5">
+                        <div className={`w-full h-full ${isMobile ? 'rounded-none' : 'rounded-[2.5rem]'} overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] border-0 md:border border-white/5 relative`}>
+                            {/* BACK BUTTON OVERLAY - Inside Player */}
+                            <button
+                                onClick={() => { setSelectedMedia(null); setActiveEpisode(null); setIsTheater(false); }}
+                                className="absolute top-4 left-4 z-[60] p-3 md:p-4 bg-black/40 hover:bg-orange-600 rounded-2xl backdrop-blur-md text-white transition-all group flex items-center gap-3 border border-white/10"
+                            >
+                                <svg className="w-4 h-4 md:w-5 md:h-5 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                                <span className="text-[10px] font-black uppercase tracking-widest hidden md:block">Back</span>
+                            </button>
                             <VideoPlayer
                                 url={getFullUrl(currentPlayingItem.stream_url)}
                                 poster={getFullUrl(currentPlayingItem.cover_url || selectedMedia.cover_url)}
@@ -126,71 +150,139 @@ const MoviesPage = ({ onBack }: MoviesPageProps) => {
                     )}
                 </div>
 
-                {/* INFO & EPISODES LIST */}
-                <div className="max-w-7xl mx-auto w-full p-8 lg:p-12">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-                        <div className="lg:col-span-2 space-y-8">
-                            <div>
-                                <div className="flex items-center gap-4 mb-4">
-                                    <span className="px-3 py-1 bg-orange-600/20 border border-orange-500/30 text-orange-400 text-[9px] font-black uppercase tracking-widest rounded-lg">
-                                        {selectedMedia.category}
-                                    </span>
-                                    <span className="text-slate-500 font-mono text-[10px] uppercase tracking-widest">
-                                        Released: {selectedMedia.release_year}
-                                    </span>
-                                </div>
-                                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-white mb-6">
-                                    {selectedMedia.title}
-                                </h1>
-                                <p className="text-slate-400 leading-relaxed font-medium text-lg">
-                                    {selectedMedia.description}
-                                </p>
+                {/* MOBILE: Description & Actions Section */}
+                {isMobile && (
+                    <div className="p-4 space-y-4">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="px-2 py-1 bg-orange-600/20 border border-orange-500/30 text-orange-400 text-[8px] font-black uppercase tracking-widest rounded">
+                                    {selectedMedia.category}
+                                </span>
+                                <span className="text-slate-500 font-mono text-[9px] uppercase tracking-widest">
+                                    {selectedMedia.release_year}
+                                </span>
                             </div>
-
-                            {/* Episodes Section for Series */}
-                            {selectedMedia.category === 'Series' && (
-                                <div className="pt-12 border-t border-white/5">
-                                    <h3 className="text-sm font-black uppercase tracking-[0.3em] text-orange-500 mb-8 flex items-center gap-4">
-                                        Transmission Segments
-                                        <div className="flex-1 h-px bg-white/5" />
-                                    </h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {episodes.map((ep) => (
-                                            <button
-                                                key={ep.id}
-                                                onClick={() => { setActiveEpisode(ep); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                                                className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${activeEpisode?.id === ep.id ? 'bg-orange-600 border-orange-500 shadow-xl' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
-                                            >
-                                                <div className="w-12 h-12 bg-black/40 rounded-xl flex items-center justify-center text-[10px] font-black text-white border border-white/5 shrink-0 group-hover:scale-110 transition-transform">
-                                                    S{ep.season_number}E{ep.episode_number}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <h4 className={`text-xs font-black uppercase tracking-widest truncate ${activeEpisode?.id === ep.id ? 'text-white' : 'text-slate-200'}`}>{ep.title}</h4>
-                                                    <p className={`text-[9px] font-mono uppercase mt-1 ${activeEpisode?.id === ep.id ? 'text-white/60' : 'text-slate-500'}`}>Segment Locked</p>
-                                                </div>
-                                                <div className="ml-auto">
-                                                    <svg className={`w-5 h-5 ${activeEpisode?.id === ep.id ? 'text-white' : 'text-slate-600 group-hover:text-orange-500'}`} fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                            <h2 className="text-xl font-black uppercase tracking-tight text-white mb-3">
+                                {selectedMedia.title}
+                            </h2>
+                            <p className="text-slate-400 text-sm leading-relaxed mb-4">
+                                {selectedMedia.description}
+                            </p>
                         </div>
 
-                        {/* Sidebar Info/Genre etc */}
-                        <div className="lg:col-span-1 border-l border-white/5 pl-12 space-y-12 hidden lg:block">
-                            <div>
-                                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4">Genre Classification</h4>
-                                <p className="text-xs font-black text-white uppercase tracking-widest">{selectedMedia.genre || 'UNCLASSIFIED'}</p>
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                            <button className="flex-1 px-4 py-3 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-orange-500 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                                Share
+                            </button>
+                            <button className="flex-1 px-4 py-3 bg-white/10 backdrop-blur-md border border-white/10 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M12 4v16m8-8H4" /></svg>
+                                My List
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* INFO & EPISODES LIST - Desktop only, Mobile gets movie grid instead */}
+                {!isMobile ? (
+                    <div className="max-w-7xl mx-auto w-full p-8 lg:p-12">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                            <div className="lg:col-span-2 space-y-8">
+                                <div>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <span className="px-3 py-1 bg-orange-600/20 border border-orange-500/30 text-orange-400 text-[9px] font-black uppercase tracking-widest rounded-lg">
+                                            {selectedMedia.category}
+                                        </span>
+                                        <span className="text-slate-500 font-mono text-[10px] uppercase tracking-widest">
+                                            Released: {selectedMedia.release_year}
+                                        </span>
+                                    </div>
+                                    <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-white mb-6">
+                                        {selectedMedia.title}
+                                    </h1>
+                                    <p className="text-slate-400 leading-relaxed font-medium text-lg">
+                                        {selectedMedia.description}
+                                    </p>
+                                </div>
+
+                                {/* Episodes Section for Series */}
+                                {selectedMedia.category === 'Series' && (
+                                    <div className="pt-12 border-t border-white/5">
+                                        <h3 className="text-sm font-black uppercase tracking-[0.3em] text-orange-500 mb-8 flex items-center gap-4">
+                                            Transmission Segments
+                                            <div className="flex-1 h-px bg-white/5" />
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {episodes.map((ep) => (
+                                                <button
+                                                    key={ep.id}
+                                                    onClick={() => { setActiveEpisode(ep); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                                    className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${activeEpisode?.id === ep.id ? 'bg-orange-600 border-orange-500 shadow-xl' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
+                                                >
+                                                    <div className="w-12 h-12 bg-black/40 rounded-xl flex items-center justify-center text-[10px] font-black text-white border border-white/5 shrink-0 group-hover:scale-110 transition-transform">
+                                                        S{ep.season_number}E{ep.episode_number}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <h4 className={`text-xs font-black uppercase tracking-widest truncate ${activeEpisode?.id === ep.id ? 'text-white' : 'text-slate-200'}`}>{ep.title}</h4>
+                                                        <p className={`text-[9px] font-mono uppercase mt-1 ${activeEpisode?.id === ep.id ? 'text-white/60' : 'text-slate-500'}`}>Segment Locked</p>
+                                                    </div>
+                                                    <div className="ml-auto">
+                                                        <svg className={`w-5 h-5 ${activeEpisode?.id === ep.id ? 'text-white' : 'text-slate-600 group-hover:text-orange-500'}`} fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div>
-                                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4">Signal Quality</h4>
-                                <p className="text-xs font-black text-emerald-500 uppercase tracking-widest">Encrypted 4K</p>
+
+                            {/* Sidebar Info/Genre etc */}
+                            <div className="lg:col-span-1 border-l border-white/5 pl-12 space-y-12 hidden lg:block">
+                                <div>
+                                    <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4">Genre Classification</h4>
+                                    <p className="text-xs font-black text-white uppercase tracking-widest">{selectedMedia.genre || 'UNCLASSIFIED'}</p>
+                                </div>
+                                <div>
+                                    <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4">Signal Quality</h4>
+                                    <p className="text-xs font-black text-emerald-500 uppercase tracking-widest">Encrypted 4K</p>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                ) : (
+                    /* MOBILE: Show movie listings instead of info */
+                    <div className="p-4">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-orange-500 mb-4 px-2">More Movies</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            {filteredMedia.filter(item => item.id !== selectedMedia.id).slice(0, 8).map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => { handleSelectMedia(item); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                    className="group relative aspect-[2/3] rounded-2xl overflow-hidden bg-white/5 border border-white/5 hover:border-orange-500/50 transition-all active:scale-95 shadow-2xl"
+                                >
+                                    {item.cover_url ? (
+                                        <img
+                                            src={getFullUrl(item.cover_url)}
+                                            alt={item.title}
+                                            loading="lazy"
+                                            className="w-full h-full object-cover transition-transform duration-700 opacity-80 group-active:opacity-100"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                            <span className="text-4xl opacity-20">🎬</span>
+                                        </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60 group-active:opacity-90 transition-opacity" />
+                                    <div className="absolute bottom-0 left-0 right-0 p-3">
+                                        <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 mb-1 block">{item.release_year}</span>
+                                        <h3 className="text-[11px] font-black text-white leading-tight line-clamp-2 uppercase tracking-wide">{item.title}</h3>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -234,20 +326,22 @@ const MoviesPage = ({ onBack }: MoviesPageProps) => {
                 )}
             </div>
 
-            {/* CATEGORY TABS */}
-            <div className="px-12 mb-8 sticky top-0 z-30 bg-[#020617]/80 backdrop-blur-xl py-6 border-b border-white/5">
-                <div className="flex items-center gap-4 overflow-x-auto no-scrollbar">
-                    {categories.map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setActiveCategory(cat)}
-                            className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
-                        >
-                            {cat}
-                        </button>
-                    ))}
+            {/* CATEGORY TABS - Hidden on mobile */}
+            {!isMobile && (
+                <div className="px-12 mb-8 sticky top-0 z-30 bg-[#020617]/80 backdrop-blur-xl py-6 border-b border-white/5">
+                    <div className="flex items-center gap-4 overflow-x-auto no-scrollbar">
+                        {categories.map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setActiveCategory(cat)}
+                                className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* CONTENT GRID */}
             <div className="px-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 min-h-[40vh]">

@@ -14,6 +14,7 @@ import AdminDashboard from './components/AdminDashboard';
 import NexusChat from './components/NexusChat';
 import AuthScreen from './components/AuthScreen';
 import MoviesPage from './components/MoviesPage';
+import FavoritesPage from './components/FavoritesPage';
 import { supabase } from './services/supabaseClient';
 import { PlaylistSource } from './types';
 
@@ -370,6 +371,13 @@ const App = () => {
             <AccountPage user={currentUser} stats={cloudStats} onViewChange={setActiveView} />
           ) : activeView === 'movies' ? (
             <MoviesPage onBack={() => setActiveView('live')} />
+          ) : activeView === 'favorites' ? (
+            <FavoritesPage
+              favorites={favorites}
+              onSelectChannel={handleChannelSelect}
+              onRemoveFavorite={(e) => toggleFavorite(e as any, e)}
+              selectedChannel={selectedChannel}
+            />
           ) : (
             <div className="flex-1 relative p-4 flex items-center justify-center">
               {selectedChannel ? (
@@ -413,19 +421,19 @@ const App = () => {
       switch (activeView) {
         case 'favorites':
           return (
-            <div className="flex-1 flex flex-col pt-20 px-4 overflow-y-auto no-scrollbar pb-32">
-              <h2 className="text-xl font-black uppercase tracking-widest text-orange-500 mb-6 px-2">Favorites</h2>
-              <div className="grid grid-cols-1 gap-4">
-                {favorites.length > 0 ? favorites.map(ch => renderChannelCard(ch)) : (
-                  <div className="py-20 text-center opacity-30 text-xs uppercase tracking-[0.3em]">No saved signals</div>
-                )}
-              </div>
-            </div>
+            <FavoritesPage
+              favorites={favorites}
+              onSelectChannel={(ch) => { handleChannelSelect(ch); setActiveView('live'); }}
+              onRemoveFavorite={(e) => toggleFavorite(e as any, e)}
+              selectedChannel={selectedChannel}
+            />
           );
         case 'account':
           return <AccountPage user={currentUser} stats={cloudStats} onViewChange={setActiveView} />;
         case 'admin':
           return <AdminDashboard stats={cloudStats} user={currentUser} onClose={() => setActiveView('account')} />;
+        case 'movies':
+          return <MoviesPage onBack={() => setActiveView('live')} />;
         default: // live
           return (
             <div className="flex-1 flex flex-col h-full pt-16">
@@ -534,12 +542,14 @@ const App = () => {
           </div>
         )}
 
-        <MobileNav
-          isTheater={isTheater}
-          activeView={activeView}
-          onViewChange={setActiveView}
-          onSidebarOpen={() => setSidebarOpen(true)}
-        />
+        {activeView !== 'admin' && (
+          <MobileNav
+            isTheater={isTheater}
+            activeView={activeView}
+            onViewChange={setActiveView}
+            onSidebarOpen={() => setSidebarOpen(true)}
+          />
+        )}
       </div>
     );
   };

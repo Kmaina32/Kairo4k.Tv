@@ -10,6 +10,8 @@
     "start": "vite preview --port $PORT --host"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.985.0",
+    "@aws-sdk/s3-request-presigner": "^3.985.0",
     "@supabase/supabase-js": "^2.95.3",
     "hls.js": "^1.6.15",
     "lucide-react": "^0.563.0",
