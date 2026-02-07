@@ -10,6 +10,8 @@
     "start": "vite preview --port $PORT --host"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
+    "hls.js": "^1.6.15",
     "lucide-react": "^0.563.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

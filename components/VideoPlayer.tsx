@@ -1,8 +1,20 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import CommandDeck from './CommandDeck';
-import StreamHUD from './StreamHUD';
-import StatsMonitor from './StatsMonitor';
+import CommandDeck from './VideoControls';
+import DiagnosticsPanel from './StatsMonitor';
+
+/**
+ * CLOUDFLARE R2 CORS NOTICE:
+ * If you encounter CORS errors with .mp4 or .m3u8 files, add this CORS policy to your R2 bucket settings:
+ * [
+ *   {
+ *     "AllowedOrigins": ["*"],
+ *     "AllowedMethods": ["GET", "HEAD"],
+ *     "AllowedHeaders": ["*"],
+ *     "ExposeHeaders": []
+ *   }
+ * ]
+ */
 
 declare global {
   interface Window {
@@ -27,6 +39,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [isRecording, setIsRecording] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showStats, setShowStats] = useState(false);
@@ -98,14 +111,28 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         const hls = new window.Hls({
           enableWorker: true,
           lowLatencyMode: true,
+          maxBufferLength: 60,
+          maxMaxBufferLength: 120,
+          maxBufferSize: 60 * 1000 * 1000, // 60MB
+          obrEwmaDefaultEstimate: 5000000, // 5Mbps initial
+          backBufferLength: 90,
+          autoStartLoad: true,
+          startLevel: -1, // Auto
+          abrEwmaFastLive: 3,
+          abrEwmaSlowLive: 15,
         });
         hlsRef.current = hls;
+        // CORS Note: Ensure your HLS manifest and segments are served with appropriate CORS headers
+        // if they are on a different domain than your web application.
         hls.loadSource(url);
         hls.attachMedia(video);
 
         hls.on(window.Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
-          video.play().catch(() => { });
+          video.play().catch(e => {
+            if (e.name !== 'AbortError') console.error('Playback failed:', e);
+          });
           setIsPlaying(true);
+          setErrorStatus(null);
           if (hls.levels) {
             setQualityLevels(hls.levels.map((l: any, i: number) => ({ index: i, height: l.height })));
           }
@@ -137,7 +164,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         hls.on(window.Hls.Events.ERROR, (_: any, data: any) => {
           if (data.fatal) {
             if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-              setErrorStatus("SGNL_LOST");
+              setErrorStatus("BUFFERING"); // Subtle label
               hls.startLoad();
             } else {
               hls.recoverMediaError();
@@ -146,15 +173,26 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         });
 
         return () => clearInterval(checkBuffer);
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      } else {
+        // Fallback for native HLS (Safari) or direct MP4
         video.src = url;
+        const onLoaded = () => {
+          video.play().catch(e => {
+            if (e.name !== 'AbortError') console.error('Playback failed:', e);
+          });
+          setIsPlaying(true);
+          setErrorStatus(null);
+        };
+        video.addEventListener('loadedmetadata', onLoaded);
+        return () => video.removeEventListener('loadedmetadata', onLoaded);
       }
     };
 
-    initPlayer();
+    const cleanup = initPlayer();
     return () => {
       if (hlsRef.current) hlsRef.current.destroy();
       clearTimeout(t);
+      if (typeof cleanup === 'function') cleanup();
     };
   }, [url]);
 
@@ -176,7 +214,9 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
   const handleTogglePlay = () => {
     if (videoRef.current) {
       if (videoRef.current.paused) {
-        videoRef.current.play();
+        videoRef.current.play().catch(e => {
+          if (e.name !== 'AbortError') console.error('Playback failed:', e);
+        });
         setIsPlaying(true);
       } else {
         videoRef.current.pause();
@@ -231,9 +271,10 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
 
   return (
     <div
-      className={`relative w-full h-full overflow-hidden bg-black select-none group
+      className={`relative w-full h-full bg-black select-none group
         ${isTheater ? 'fixed inset-0 z-[200]' : 'rounded-[2rem] border-2 border-slate-800'}`}
       onMouseMove={resetControlsTimeout}
+      onTouchStart={resetControlsTimeout}
     >
       <video
         ref={videoRef}
@@ -256,22 +297,22 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
       {/* INVISIBLE CANVAS FOR RECORDING */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* HEADS UP DISPLAY */}
-      <StreamHUD
+      {/* CONSOLIDATED DIAGNOSTICS & INFO (The "i" icon) */}
+      <DiagnosticsPanel
+        stats={stats}
+        visible={showStats}
+        onToggle={() => setShowStats(!showStats)}
         channelName={channelName || 'UNKNOWN_SOURCE'}
         isRecording={isRecording}
         quality={qualityLabel}
       />
 
-      {/* STATS MONITOR PROBE */}
-      <StatsMonitor stats={stats} visible={showStats} />
-
-      {/* ERROR OVERLAY */}
-      {errorStatus && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-16 h-16 border-4 border-t-red-500 border-r-transparent border-b-red-500 border-l-transparent rounded-full animate-spin" />
-            <span className="text-[12px] font-black uppercase tracking-[0.5em] text-red-500 animate-pulse">{errorStatus}</span>
+      {/* SUBTLE LOADING / BUFFERING INDICATOR */}
+      {(errorStatus === "BUFFERING" || (isPlaying && stats.buffer < 0.5)) && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 pointer-events-none">
+          <div className="flex flex-col items-center gap-3 bg-black/60 backdrop-blur-md px-6 py-4 rounded-3xl border border-white/10 animate-in zoom-in duration-300">
+            <div className="w-8 h-8 border-2 border-t-orange-500 border-r-transparent border-b-orange-500 border-l-transparent rounded-full animate-spin" />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">Locking Signal...</span>
           </div>
         </div>
       )}
@@ -281,16 +322,19 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         isPlaying={isPlaying}
         isMuted={isMuted}
         volume={volume}
+        playbackRate={playbackRate}
         isRecording={isRecording}
+        isTheater={isTheater}
         qualityLevels={qualityLevels}
-        currentQuality={currentQuality}
-        onSetQuality={handleSetQuality}
-        onTogglePiP={handleTogglePiP}
+        currentLevel={currentQuality}
         onTogglePlay={handleTogglePlay}
         onToggleMute={() => { if (videoRef.current) { videoRef.current.muted = !isMuted; setIsMuted(!isMuted); } }}
         onVolumeChange={(val) => { if (videoRef.current) { videoRef.current.volume = val; setVolume(val); } }}
+        onPlaybackRateChange={(val) => { if (videoRef.current) { videoRef.current.playbackRate = val; setPlaybackRate(val); } }}
+        onQualityChange={handleSetQuality}
+        onToggleTheater={onToggleTheater}
         onToggleFullscreen={() => videoRef.current?.requestFullscreen()}
-        onToggleStats={() => setShowStats(!showStats)}
+        onTogglePIP={handleTogglePiP}
         onStartRecording={startRecording}
         onStopRecording={stopRecording}
         showControls={showControls}

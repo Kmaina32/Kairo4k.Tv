@@ -1,0 +1,7 @@
+#EXTM3U
+#EXTINF:-1,Sample Invalid Stream
+http://invalid.stream/test.m3u8
+#EXTINF:-1,Discovery DTX
+http://163.172.33.168:22500/deniz/27012019/17443
+#EXTINF:-1,NASA TV Public
+http://nasatv-lh.akamaihd.net/i/NASA_101@319270/index_1000_av-p.m3u8
