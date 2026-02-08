@@ -86,7 +86,7 @@ const MediaModal = ({ onClose, onSuccess, initialData, parentId }: MediaModalPro
                 <div className="absolute -top-10 -right-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
 
                 <h2 className="text-xl font-black uppercase tracking-widest text-white mb-6">
-                    {initialData ? 'Edit Content' : parentId ? 'Add Episode' : 'Upload Content'}
+                    {initialData ? 'Edit Content' : parentId ? 'Add Episode' : 'Add Content'}
                 </h2>
 
                 {error && (
@@ -206,7 +206,7 @@ const MediaModal = ({ onClose, onSuccess, initialData, parentId }: MediaModalPro
                             disabled={loading}
                             className="flex-1 py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 rounded-2xl text-xs font-black uppercase tracking-widest text-white transition-all shadow-[0_4px_20px_rgba(147,51,234,0.3)]"
                         >
-                            {loading ? 'Processing...' : initialData ? 'Update Item' : 'Save Item'}
+                            {loading ? 'Saving...' : initialData ? 'Update Item' : 'Save Item'}
                         </button>
                     </div>
                 </form>

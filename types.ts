@@ -17,6 +17,7 @@ export interface PlaylistSource {
 export interface UserProfile {
   id: string; // UUID format
   username: string;
+  email?: string;
   rank: 'Operator' | 'Admin' | 'Guest';
   joinedAt: number;
   lastSync: number;
@@ -35,3 +36,5 @@ export interface CloudStats {
   dbStatus: 'connected' | 'reconnecting' | 'error';
   postgresLatency: number;
 }
+
+export type AppView = 'live' | 'favorites' | 'account' | 'admin' | 'movies' | 'playlists' | 'watchlist' | 'subscriptions' | 'history' | 'media-favorites';

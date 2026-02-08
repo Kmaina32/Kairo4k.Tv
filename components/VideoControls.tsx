@@ -71,7 +71,7 @@ const VideoControls = ({
   );
 
   return (
-    <div className={`absolute bottom-0 inset-x-0 transition-all duration-500 pb-4 md:pb-10 px-4 md:px-12 flex justify-center ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+    <div className={`absolute bottom-0 inset-x-0 transition-all duration-500 pb-4 md:pb-10 px-4 md:px-12 flex justify-center z-[50] ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
 
       {/* THE UNIFIED COMMAND BRIDGE */}
       <div className="glass h-14 md:h-20 w-full max-w-5xl rounded-[28px] md:rounded-[32px] flex items-center justify-between px-4 md:px-10 gap-2 border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">

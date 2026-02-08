@@ -1,11 +1,11 @@
-import { UserProfile } from '../types';
+import { UserProfile, AppView } from '../types';
 
 type HeaderProps = {
   onMenuClick: () => void;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
-  onViewChange?: (view: 'live' | 'favorites' | 'account' | 'admin' | 'movies') => void;
-  activeView?: 'live' | 'favorites' | 'account' | 'admin' | 'movies';
+  onViewChange?: (view: AppView) => void;
+  activeView?: AppView;
   user?: UserProfile;
 };
 
@@ -47,7 +47,7 @@ const Header = ({ onMenuClick, searchTerm, setSearchTerm, onViewChange, activeVi
         <div className="relative group">
           <input
             type="text"
-            placeholder="Scan for signals..."
+            placeholder="Search..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-64 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
@@ -60,10 +60,10 @@ const Header = ({ onMenuClick, searchTerm, setSearchTerm, onViewChange, activeVi
             className={`flex items-center gap-3 p-1.5 pr-4 rounded-2xl transition-all border ${activeView === 'account' ? 'bg-orange-600/10 border-orange-500/40' : 'bg-white/5 border-transparent hover:border-white/10'}`}
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-[12px] font-black text-white shadow-xl">
-              {user.username[0]}
+              {user.username ? user.username[0] : '?'}
             </div>
             <div className="flex flex-col items-start translate-y-0.5">
-              <span className="text-[9px] font-black uppercase tracking-widest text-white leading-none">{user.username}</span>
+              <span className="text-[9px] font-black uppercase tracking-widest text-white leading-none">{user.username || 'Unknown'}</span>
               <span className="text-[7px] font-mono uppercase tracking-widest text-orange-500/60 leading-tight">{user.rank}</span>
             </div>
           </button>

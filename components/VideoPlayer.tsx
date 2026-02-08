@@ -2,6 +2,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import CommandDeck from './VideoControls';
 import DiagnosticsPanel from './StatsMonitor';
+import { supabase } from '../services/supabaseClient';
 
 /**
  * CLOUDFLARE R2 CORS NOTICE:
@@ -28,11 +29,15 @@ interface VideoPlayerProps {
   isTheater: boolean;
   onToggleTheater: () => void;
   channelName?: string;
+  onEnded?: () => void;
+  onTimeUpdate?: (currentTime: number) => void;
+  initialSeek?: number;
 }
 
-const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: VideoPlayerProps) => {
+const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName, onEnded, onTimeUpdate, initialSeek }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
   const staticCanvasRef = useRef<HTMLCanvasElement>(null); // For "static" effect
 
   // State
@@ -58,6 +63,17 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const controlsTimeoutRef = useRef<number | null>(null);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+
+  useEffect(() => {
+    onTimeUpdateRef.current = onTimeUpdate;
+  }, [onTimeUpdate]);
+
+  // Ad Engine State
+  const [activeAd, setActiveAd] = useState<any>(null);
+  const [isAdPlaying, setIsAdPlaying] = useState(false);
+  const adRef = useRef<any>(null);
+  const lastAdTimeRef = useRef<number>(0);
 
   const resetControlsTimeout = useCallback(() => {
     setShowControls(true);
@@ -81,11 +97,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     const len = buffer32.length;
 
     for (let i = 0; i < len; i++) {
-      if (Math.random() < 0.1) {
-        buffer32[i] = 0xffffffff;
-      } else {
-        buffer32[i] = 0x00000000;
-      }
+      buffer32[i] = Math.random() < 0.1 ? 0xffffffff : 0x00000000;
     }
     ctx.putImageData(idata, 0, 0);
     requestAnimationFrame(drawStatic);
@@ -101,6 +113,23 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     // Trigger static effect on URL change
     setIsStaticActive(true);
     const t = setTimeout(() => setIsStaticActive(false), 800);
+
+    const checkPreRoll = async () => {
+      try {
+        const { data: config } = await supabase.from('ads_config').select('*').eq('placement', 'pre-roll').eq('is_enabled', true).maybeSingle();
+        if (config) {
+          const { data: ads } = await supabase.from('ads_library').select('*').eq('is_active', true);
+          if (ads && ads.length > 0) {
+            const randomAd = ads[Math.floor(Math.random() * ads.length)];
+            setActiveAd(randomAd);
+            setIsAdPlaying(true);
+          }
+        }
+      } catch (err) {
+        console.error("Ad Engine Pre-Roll Error:", err);
+      }
+    };
+    checkPreRoll();
 
     const video = videoRef.current;
     if (!video) return;
@@ -118,42 +147,63 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
       // Reset buffering state on source change
       setIsBuffering(true);
 
-      const onWaiting = () => {
-        console.log('🔴 Video waiting (buffering)');
-        setIsBuffering(true);
-      };
-      const onPlaying = () => {
-        console.log('🟢 Video playing');
-        setIsBuffering(false);
-        setErrorStatus(null);
-      };
-      const onCanPlay = () => {
-        console.log('🟡 Video can play');
-        setIsBuffering(false);
-      };
-      const onLoadedData = () => {
-        console.log('🔵 Video loaded data');
-        setIsBuffering(false);
-      };
-      const onStalled = () => {
-        console.log('🟠 Video stalled');
-        setIsBuffering(true);
-      };
-
-      const onTimeUpdate = () => {
-        // If movie is progressing, it's definitely not "locking"
+      const onWaiting = () => setIsBuffering(true);
+      const onPlaying = () => { setIsBuffering(false); setErrorStatus(null); setIsPlaying(true); };
+      const onCanPlay = () => setIsBuffering(false);
+      const onLoadedData = () => setIsBuffering(false);
+      const onStalled = () => setIsBuffering(true);
+      const onTimeUpdateInternal = () => {
         if (video.currentTime > 0) {
           setIsBuffering(false);
           setErrorStatus(null);
         }
+
+        // AD ENGINE: MID-ROLL CHECK
+        const checkMidRoll = async () => {
+          if (isAdPlaying) return;
+          const currentTime = Math.floor(video.currentTime);
+
+          onTimeUpdateRef.current && onTimeUpdateRef.current(video.currentTime);
+
+          // PERSISTENCE LOCAL SYSTEM: Save progress
+          if (currentTime > 0 && currentTime % 5 === 0) {
+            localStorage.setItem(`nexus_progress_${url}`, currentTime.toString());
+          }
+
+          // Fetch config for frequency
+          const { data: config } = await supabase.from('ads_config').select('*').eq('placement', 'mid-roll').eq('is_enabled', true).maybeSingle();
+          if (!config) return;
+
+          const freqSec = (config.frequency_minutes || 10) * 60;
+
+          if (currentTime > 0 && currentTime % freqSec === 0 && currentTime !== lastAdTimeRef.current) {
+            lastAdTimeRef.current = currentTime;
+            video.pause();
+            const { data: ads } = await supabase.from('ads_library').select('*').eq('is_active', true);
+            if (ads && ads.length > 0) {
+              setActiveAd(ads[Math.floor(Math.random() * ads.length)]);
+              setIsAdPlaying(true);
+            }
+          }
+        };
+        checkMidRoll();
       };
+      const handleEnded = () => {
+        setIsPlaying(false);
+        if (onEnded) onEnded();
+      };
+      const onPlay = () => setIsPlaying(true);
+      const onPause = () => setIsPlaying(false);
 
       video.addEventListener('waiting', onWaiting);
       video.addEventListener('playing', onPlaying);
       video.addEventListener('canplay', onCanPlay);
       video.addEventListener('loadeddata', onLoadedData);
       video.addEventListener('stalled', onStalled);
-      video.addEventListener('timeupdate', onTimeUpdate);
+      video.addEventListener('timeupdate', onTimeUpdateInternal);
+      video.addEventListener('ended', handleEnded);
+      video.addEventListener('play', onPlay);
+      video.addEventListener('pause', onPause);
 
       const cleanupEvents = () => {
         video.removeEventListener('waiting', onWaiting);
@@ -161,7 +211,10 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         video.removeEventListener('canplay', onCanPlay);
         video.removeEventListener('loadeddata', onLoadedData);
         video.removeEventListener('stalled', onStalled);
-        video.removeEventListener('timeupdate', onTimeUpdate);
+        video.removeEventListener('timeupdate', onTimeUpdateInternal);
+        video.removeEventListener('ended', handleEnded);
+        video.removeEventListener('play', onPlay);
+        video.removeEventListener('pause', onPause);
       };
 
       if (window.Hls && window.Hls.isSupported() && isHLS && !isStaticVideo) {
@@ -170,11 +223,11 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
           lowLatencyMode: true,
           maxBufferLength: 60,
           maxMaxBufferLength: 120,
-          maxBufferSize: 60 * 1000 * 1000, // 60MB
-          obrEwmaDefaultEstimate: 5000000, // 5Mbps initial
+          maxBufferSize: 60 * 1000 * 1000,
+          obrEwmaDefaultEstimate: 5000000,
           backBufferLength: 90,
           autoStartLoad: true,
-          startLevel: -1, // Auto
+          startLevel: -1,
           abrEwmaFastLive: 3,
           abrEwmaSlowLive: 15,
         });
@@ -183,7 +236,11 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         hls.attachMedia(video);
 
         hls.on(window.Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
-          setIsBuffering(false); // Clear initial buffering when manifest is ready
+          setIsBuffering(false);
+
+          const savedProg = localStorage.getItem(`nexus_progress_${url}`);
+          video.currentTime = initialSeek || parseFloat(savedProg || '0');
+
           video.play().catch(e => {
             if (e.name !== 'AbortError') console.error('Playback failed:', e);
           }).then(() => {
@@ -197,7 +254,6 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
           }
         });
 
-        // Hook up stats
         hls.on(window.Hls.Events.FRAG_LOADED, (_: any, data: any) => {
           if (data && data.stats) {
             setStats(prev => ({
@@ -208,7 +264,6 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
           }
         });
 
-        // Monitor buffer
         const checkBuffer = setInterval(() => {
           if (video.buffered.length > 0) {
             setStats(prev => ({ ...prev, buffer: video.buffered.end(video.buffered.length - 1) - video.currentTime }));
@@ -237,22 +292,28 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
           cleanupEvents();
         };
       } else {
-        // Fallback for native HLS (Safari) or direct MP4
         video.src = url;
-        const onLoaded = () => {
-          setIsBuffering(false); // Clear buffering when metadata loads
-          video.play().catch(e => {
-            if (e.name !== 'AbortError') console.error('Playback failed:', e);
-          }).then(() => {
-            setIsBuffering(false);
-            setErrorStatus(null);
-            setIsPlaying(true);
-          });
-          setErrorStatus(null);
+
+        const savedProg = localStorage.getItem(`nexus_progress_${url}`);
+        video.currentTime = initialSeek || parseFloat(savedProg || '0');
+
+        // FORCED AUTOPLAY SYSTEM (Direct)
+        const startPlayback = async () => {
+          try {
+            video.muted = false;
+            await video.play();
+          } catch (err) {
+            console.warn("Unmuted autoplay blocked, retrying muted...");
+            video.muted = true;
+            await video.play().catch(e => console.error("Total playback failure:", e));
+          }
         };
-        video.addEventListener('loadedmetadata', onLoaded);
+        startPlayback();
+        setIsPlaying(true);
+        setIsBuffering(false);
+        setErrorStatus(null);
+
         return () => {
-          video.removeEventListener('loadedmetadata', onLoaded);
           cleanupEvents();
         };
       }
@@ -281,17 +342,35 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     }
   };
 
-  const handleTogglePlay = () => {
-    if (videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play().catch(e => {
-          if (e.name !== 'AbortError') console.error('Playback failed:', e);
-        });
+  const handleTogglePlay = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      setIsBuffering(true); // Show loading while attempting to play
+      try {
+        // Try unmuted first
+        video.muted = false;
+        await video.play();
         setIsPlaying(true);
-      } else {
-        videoRef.current.pause();
-        setIsPlaying(false);
+        setIsBuffering(false);
+      } catch (err) {
+        // Autoplay blocked, try muted
+        console.warn("Unmuted play blocked, trying muted...");
+        try {
+          video.muted = true;
+          await video.play();
+          setIsPlaying(true);
+          setIsBuffering(false);
+        } catch (e) {
+          console.error("Total playback failure:", e);
+          setIsBuffering(false);
+          setErrorStatus("PLAYBACK ERROR");
+        }
       }
+    } else {
+      video.pause();
+      setIsPlaying(false);
     }
   };
 
@@ -319,13 +398,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
       if (!isRecording && mediaRecorderRef.current?.state !== 'recording') return;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        // Add overlay to recording
-        ctx.fillStyle = '#4f46e5';
-        ctx.font = 'bold 30px monospace';
-        ctx.fillText('REC // KAIRO_TERMINAL', 40, 60);
-      }
+      if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       requestAnimationFrame(recordLoop);
     };
     requestAnimationFrame(recordLoop);
@@ -349,6 +422,29 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
     mediaRecorderRef.current?.stop();
   };
 
+  // Ambient Glow Loop
+  useEffect(() => {
+    let animationFrame: number;
+    const drawAmbient = () => {
+      const video = videoRef.current;
+      const ambientCanvas = ambientCanvasRef.current;
+      if (!video || !ambientCanvas || (!isTheater && !isPlaying) || video.paused || video.ended) {
+        animationFrame = requestAnimationFrame(drawAmbient);
+        return;
+      }
+
+      ambientCanvas.width = 64;
+      ambientCanvas.height = 36;
+      const ctx = ambientCanvas.getContext('2d');
+      if (ctx) ctx.drawImage(video, 0, 0, 64, 36);
+
+      animationFrame = requestAnimationFrame(drawAmbient);
+    };
+
+    animationFrame = requestAnimationFrame(drawAmbient);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [isTheater, isPlaying]);
+
   return (
     <div
       className={`relative w-full h-full bg-black select-none group
@@ -356,29 +452,65 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
       onMouseMove={resetControlsTimeout}
       onTouchStart={resetControlsTimeout}
     >
+      {/* AMBIENT GLOW LAYER */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-50">
+        <canvas
+          ref={ambientCanvasRef}
+          className="w-full h-full scale-150 blur-[80px]"
+          style={{ filter: 'brightness(1.5) saturate(2)' }}
+        />
+      </div>
+
       <video
         ref={videoRef}
         poster={poster}
-        className="w-full h-full object-contain"
+        className="w-full h-full object-contain relative z-10"
         onClick={handleTogglePlay}
         crossOrigin="anonymous"
         playsInline
       />
 
-      {/* STATIC INTERFERENCE LAYER */}
-      {/* STATIC INTERFERENCE LAYER (DISABLED) */}
-      {/* 
-      <canvas
-        ref={staticCanvasRef}
-        width={320} height={180}
-        className={`absolute inset-0 w-full h-full pointer-events-none mix-blend-screen opacity-50 transition-opacity duration-300 ${isStaticActive ? 'opacity-50' : 'opacity-0'}`}
-      />
-      */}
+      {/* CENTERED PLAY BUTTON OVERLAY - Shows when paused */}
+      {!isPlaying && !isBuffering && (
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center cursor-pointer bg-black/30"
+          onClick={handleTogglePlay}
+        >
+          <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-orange-500/90 flex items-center justify-center shadow-2xl shadow-orange-500/30 hover:scale-110 transition-transform duration-300 hover:bg-orange-400">
+            <svg className="w-10 h-10 md:w-14 md:h-14 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {/* BUFFERING/LOADING INDICATOR */}
+      {isBuffering && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+          {/* Spinning loader */}
+          <div className="relative w-16 h-16 md:w-24 md:h-24">
+            <div className="absolute inset-0 border-4 border-orange-500/20 rounded-full"></div>
+            <div className="absolute inset-0 border-4 border-transparent border-t-orange-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-2 border-4 border-transparent border-t-orange-400/70 rounded-full animate-spin" style={{ animationDuration: '0.8s', animationDirection: 'reverse' }}></div>
+          </div>
+          {/* Loading text */}
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <span className="text-xs md:text-sm font-black uppercase tracking-[0.3em] text-orange-500 animate-pulse">
+              {errorStatus || 'LOCKING SIGNAL...'}
+            </span>
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* INVISIBLE CANVAS FOR RECORDING */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* CONSOLIDATED DIAGNOSTICS & INFO (The "i" icon) */}
+      {/* DIAGNOSTICS */}
       <DiagnosticsPanel
         stats={stats}
         visible={showStats}
@@ -388,7 +520,37 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName }: V
         quality={qualityLabel}
       />
 
-      {/* SUBTLE LOADING / BUFFERING INDICATOR REMOVED */}
+      {/* AD OVERLAY SYSTEM */}
+      {isAdPlaying && activeAd && (
+        <div className="absolute inset-0 z-[150] bg-black animate-in fade-in duration-500">
+          <video
+            src={`https://pub-a84b309a59b0432d9479ce0138fe01dd.r2.dev/${activeAd.ad_url}`}
+            autoPlay
+            className="w-full h-full object-contain"
+            onEnded={() => {
+              setIsAdPlaying(false);
+              setActiveAd(null);
+              if (videoRef.current) videoRef.current.play();
+            }}
+          />
+          <div className="absolute top-10 left-10 flex flex-col gap-2">
+            <span className="bg-orange-600 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-xl">Sponsored Ad</span>
+            <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">{activeAd.title}</span>
+          </div>
+          {activeAd.click_through_url && (
+            <a
+              href={activeAd.click_through_url} target="_blank" rel="noreferrer"
+              className="absolute bottom-10 right-10 px-8 py-4 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl text-[10px] font-black uppercase text-white hover:bg-white/20 transition-all"
+            >
+              Learn More
+            </a>
+          )}
+          <div className="absolute bottom-10 left-10 flex items-center gap-3">
+            <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-ping" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Secure Connection</span>
+          </div>
+        </div>
+      )}
 
       {/* COMMAND DECK */}
       <CommandDeck

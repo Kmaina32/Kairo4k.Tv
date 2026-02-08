@@ -153,7 +153,7 @@ const MediaUploadPanel = ({ onUploadComplete }: MediaUploadPanelProps) => {
             }
 
             // Save to database
-            const { error } = await supabase.from('media_library').insert({
+            const { data, error } = await supabase.from('media_library').insert({
                 title: formData.title,
                 description: formData.description,
                 category: formData.category,
@@ -162,13 +162,18 @@ const MediaUploadPanel = ({ onUploadComplete }: MediaUploadPanelProps) => {
                 stream_url: videoUrl.replace('https://pub-a84b309a59b0432d9479ce0138fe01dd.r2.dev/', ''),
                 cover_url: coverUrl.replace('https://pub-a84b309a59b0432d9479ce0138fe01dd.r2.dev/', ''),
                 is_active: true,
-            });
+            }).select().single();
 
             if (error) throw error;
 
             alert('Upload successful!');
             resetForm();
             onUploadComplete();
+
+            // If it's a series, maybe tell the parent to open the episode manager
+            if (formData.category === 'Series' && data) {
+                // We could pass data back if needed, but for now we'll just rely on the user manual navigation or auto-switching view.
+            }
         } catch (error: any) {
             console.error('Upload error:', error);
             alert(`Upload failed: ${error.message}`);

@@ -8,10 +8,14 @@ import MediaModal from './AddMediaModal';
 import MediaUploadPanel from './MediaUploadPanel';
 import StorageAnalytics from './StorageAnalytics';
 import CommandDeck from './CommandDeck';
+import EpisodeManagerModal from './EpisodeManagerModal';
+import AdManager from './AdManager';
+import VirtualChannelManager from './VirtualChannelManager';
+import SeriesManager from './SeriesManager';
 
 interface AdminDashboardProps {
     stats: CloudStats | null;
-    user: UserProfile;
+    user?: UserProfile;
     onClose: () => void;
 }
 
@@ -19,7 +23,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     const [isAuditing, setIsAuditing] = useState(false);
 
     // Persist admin view in localStorage
-    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'upload' | 'storage'>(() => {
+    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'ads' | 'broadcast'>(() => {
         const saved = localStorage.getItem('nexus_admin_view');
         return (saved as any) || 'overview';
     });
@@ -43,6 +47,8 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     // Modals
     const [playlistModalState, setPlaylistModalState] = useState<{ open: boolean, initialData?: any }>({ open: false });
     const [mediaModalState, setMediaModalState] = useState<{ open: boolean, initialData?: any, parentId?: string }>({ open: false });
+    const [episodeManagerSeries, setEpisodeManagerSeries] = useState<any | null>(null);
+    const [showSeriesManager, setShowSeriesManager] = useState(false);
 
     useEffect(() => {
         if (adminView === 'users') fetchUsers();
@@ -98,7 +104,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         try {
             const { error } = await supabase.from('playlists').delete().eq('id', id);
             if (error) throw error;
-            await cloudService.logEvent(user.username, `Deleted playlist source: ${name}`);
+            await cloudService.logEvent(user?.username || 'Unknown', `Deleted playlist source: ${name}`);
             fetchPlaylists();
         } catch (err) {
             console.error('Error deleting playlist:', err);
@@ -120,7 +126,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
 
     const handleRunAudit = async () => {
         setIsAuditing(true);
-        await cloudService.logEvent(user.username, 'Manual Signal Audit Initiated');
+        await cloudService.logEvent(user?.username || 'Unknown', 'Manual Signal Audit Initiated');
         setTimeout(() => setIsAuditing(false), 3000);
     };
 
@@ -129,8 +135,10 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         { id: 'users' as const, label: 'Operator Nodes', icon: <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /> },
         { id: 'playlists' as const, label: 'Signal Sources', icon: <path d="M13 10V3L4 14h7v7l9-11h-7z" /> },
         { id: 'media' as const, label: 'Media Library', icon: <path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /> },
-        { id: 'upload' as const, label: 'Upload to R2', icon: <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /> },
-        { id: 'storage' as const, label: 'R2 Storage', icon: <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /> },
+        { id: 'uploads' as const, label: 'Upload to R2', icon: <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /> },
+        { id: 'analytics' as const, label: 'R2 Analytics', icon: <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /> },
+        { id: 'ads' as const, label: 'Ad Manager', icon: <path d="M11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882ZM11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882Z" /> },
+        { id: 'broadcast' as const, label: 'Virtual Channels', icon: <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.121l6.811-6.81z" /> },
     ];
 
     const statsCards = [
@@ -228,6 +236,13 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                                 </div>
                                 <div className="flex gap-3">
                                     <button
+                                        onClick={() => setShowSeriesManager(true)}
+                                        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center gap-2"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                        Episodes
+                                    </button>
+                                    <button
                                         onClick={() => setMediaModalState({ open: true })}
                                         className="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-purple-900/20 flex items-center gap-2"
                                     >
@@ -285,8 +300,8 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                                             </button>
                                             {item.category === 'Series' && (
-                                                <button onClick={() => setMediaModalState({ open: true, parentId: item.id })} title="Add Episode" className="p-2 bg-purple-600/60 backdrop-blur-md rounded-xl text-white hover:bg-purple-500 border border-purple-500/30">
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                <button onClick={() => setEpisodeManagerSeries(item)} title="Manage Episodes" className="p-2 bg-purple-600/60 backdrop-blur-md rounded-xl text-white hover:bg-purple-500 border border-purple-500/30">
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                                                 </button>
                                             )}
                                             <button onClick={(e) => { e.stopPropagation(); handleDeleteMedia(item.id, item.title); }} title="Delete" className="p-2 bg-red-600/60 backdrop-blur-md rounded-xl text-white hover:bg-red-500 border border-red-500/30">
@@ -383,7 +398,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     )}
 
                     {/* R2 UPLOAD VIEW */}
-                    {adminView === 'upload' && (
+                    {adminView === 'uploads' && (
                         <div className="animate-in fade-in zoom-in-95 duration-500">
                             <MediaUploadPanel onUploadComplete={() => {
                                 // Optionally switch to library or show success notification
@@ -393,11 +408,15 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     )}
 
                     {/* R2 STORAGE ANALYTICS VIEW */}
-                    {adminView === 'storage' && (
+                    {adminView === 'analytics' && (
                         <div className="animate-in fade-in zoom-in-95 duration-500">
                             <StorageAnalytics />
                         </div>
                     )}
+
+                    {adminView === 'ads' && <AdManager />}
+
+                    {adminView === 'broadcast' && <VirtualChannelManager />}
                 </div>
             </main>
 
@@ -448,6 +467,20 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     </button>
                 </div>
             </div>
+
+            {episodeManagerSeries && (
+                <EpisodeManagerModal
+                    series={episodeManagerSeries}
+                    onClose={() => setEpisodeManagerSeries(null)}
+                />
+            )}
+
+            {showSeriesManager && (
+                <SeriesManager
+                    onClose={() => setShowSeriesManager(false)}
+                    onRefresh={fetchMediaLibrary}
+                />
+            )}
         </div>
     );
 };

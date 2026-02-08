@@ -347,9 +347,11 @@ export const DEFAULT_PLAYLISTS: PlaylistSource[] = [
 ];
 
 export const PROXY_OPTIONS = [
-  'https://api.allorigins.win/raw?url=',
   'https://corsproxy.io/?',
+  'https://api.allorigins.win/raw?url=',
+  'https://cors.eu.org/',
   'https://api.codetabs.com/v1/proxy?quest=',
+  'https://thingproxy.freeboard.io/fetch/',
 ];
 
 export const CACHE_TTL = 1000 * 60 * 30;

@@ -74,11 +74,11 @@ const DiagnosticsPanel = ({ stats, channelName, isRecording, quality, visible, o
                         <div className="flex items-center gap-2 mb-1">
                             <div className={`w-2 h-2 rounded-full ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
                             <span className="text-[10px] font-black uppercase tracking-widest text-white/90">
-                                SOURCE: {channelName || 'UNKNOWN'}
+                                NAME: {channelName || 'UNKNOWN'}
                             </span>
                         </div>
                         <div className="text-[8px] font-mono text-emerald-500/60 tracking-tighter uppercase">
-                            Secure_Connection_Active
+                            Connection Active
                         </div>
                     </div>
 
@@ -87,7 +87,7 @@ const DiagnosticsPanel = ({ stats, channelName, isRecording, quality, visible, o
                     {/* SECTION 2: SYSTEM METRICS (From HUD) */}
                     <div className="grid grid-cols-3 gap-2 mb-4">
                         <div className="flex flex-col">
-                            <span className="text-[8px] text-white/30 uppercase font-bold">Res</span>
+                            <span className="text-[8px] text-white/30 uppercase font-bold">Quality</span>
                             <span className="text-[10px] text-white font-mono">{quality}</span>
                         </div>
                         <div className="flex flex-col border-x border-white/5 px-2">
@@ -103,7 +103,7 @@ const DiagnosticsPanel = ({ stats, channelName, isRecording, quality, visible, o
                     {/* SECTION 3: NETWORK GRAPH (From Stats) */}
                     <div className="mb-4">
                         <div className="flex justify-between text-[9px] uppercase font-mono text-slate-400 mb-1">
-                            <span>Downlink</span>
+                            <span>Speed</span>
                             <span className="text-emerald-400">{(stats.bandwidth / 1000000).toFixed(2)} Mbps</span>
                         </div>
                         <canvas ref={canvasRef} width={240} height={40} className="w-full h-10 border-b border-white/5" />

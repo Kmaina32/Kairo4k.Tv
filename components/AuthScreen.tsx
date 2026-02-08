@@ -107,12 +107,50 @@ const AuthScreen = ({ onSuccess }: AuthScreenProps) => {
                     </button>
                 </form>
 
-                <div className="mt-8 text-center">
+                <div className="mt-8 flex flex-col gap-4 text-center">
                     <button
                         onClick={() => setIsLogin(!isLogin)}
                         className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
                     >
                         {isLogin ? "Need new clearance? Create Account" : "Existing Operator? Log In"}
+                    </button>
+
+                    <div className="flex items-center gap-4 py-2">
+                        <div className="flex-1 h-px bg-white/5" />
+                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-700">Auxiliary Access</span>
+                        <div className="flex-1 h-px bg-white/5" />
+                    </div>
+
+                    <button
+                        onClick={async () => {
+                            setLoading(true);
+                            setError(null);
+                            try {
+                                // Attempt guest sign in - using a predefined guest account is safer for RLS
+                                // If you prefer anonymous, you'd use supabase.auth.signInAnonymously()
+                                // But here we'll assume a 'guest@kairo.com' / 'guest123' exists or just use a mock sign-in if needed.
+                                // Let's try anonymous first if enabled, otherwise provide a guest button that just works.
+                                const { error } = await supabase.auth.signInWithPassword({
+                                    email: 'guest@kairo-nexus.com',
+                                    password: 'GuestPassword123'
+                                });
+                                if (error) {
+                                    // Fallback to anonymous if the account doesn't exist
+                                    const { error: anonError } = await supabase.auth.signInAnonymously();
+                                    if (anonError) throw anonError;
+                                }
+                                onSuccess();
+                            } catch (err: any) {
+                                setError("GUEST_ACCESS_DENIED: Check system configuration.");
+                                console.error(err);
+                            } finally {
+                                setLoading(false);
+                            }
+                        }}
+                        disabled={loading}
+                        className="w-full py-4 bg-white/5 border border-white/10 hover:border-orange-500/30 text-white rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all hover:bg-orange-500/5"
+                    >
+                        Enter as Guest
                     </button>
                 </div>
             </div>
