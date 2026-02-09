@@ -119,12 +119,12 @@ const VirtualChannelManager = () => {
 
         if (type === 'media') {
             const media = mediaList.find(m => m.id === id);
-            duration = durationOverride || media?.duration || 300; // Default 5 min if unknown
+            duration = durationOverride || media?.duration || 0;
             payload.media_id = id;
             payload.duration = duration;
         } else {
             const ad = adsList.find(a => a.id === id);
-            duration = durationOverride || ad?.duration || 30; // Default 30 sec for ads
+            duration = durationOverride || ad?.duration || 0;
             payload.ad_id = id;
             payload.duration = duration;
         }
@@ -170,22 +170,6 @@ const VirtualChannelManager = () => {
         setError(null);
 
         try {
-            // First, ensure all schedule items have duration
-            const updates = schedule
-                .filter(item => !item.duration || item.duration <= 0)
-                .map(item => ({
-                    id: item.id,
-                    duration: item.media_id ? 300 : 30 // Default duration
-                }));
-
-            if (updates.length > 0) {
-                for (const update of updates) {
-                    await supabase
-                        .from('channel_schedule')
-                        .upsert({ id: update.id, duration: update.duration }, { onConflict: 'id' });
-                }
-            }
-
             // Call server-side function
             const { data, error } = await supabase.rpc('go_live', { channel_uuid: selectedChannel.id });
 
@@ -250,9 +234,13 @@ const VirtualChannelManager = () => {
         setProcessing('Scheduling...');
 
         try {
+            const isoTime = fromLocalInputValue(time);
+            if (!isoTime) {
+                throw new Error('Invalid time value');
+            }
             const { error } = await supabase.rpc('schedule_live', {
                 channel_uuid: selectedChannel.id,
-                start_time: new Date(time).toISOString()
+                start_time: isoTime
             });
 
             // Fallback
@@ -262,8 +250,8 @@ const VirtualChannelManager = () => {
                     .upsert({
                         id: selectedChannel.id,
                         is_active: true,
-                        scheduled_start_time: new Date(time).toISOString(),
-                        live_started_at: new Date(time).toISOString()
+                        scheduled_start_time: isoTime,
+                        live_started_at: isoTime
                     }, { onConflict: 'id' });
             }
 
@@ -359,6 +347,22 @@ const VirtualChannelManager = () => {
         if (h > 0) return `${h}h ${m}m`;
         if (m > 0) return `${m}m ${s}s`;
         return `${s}s`;
+    };
+
+    const toLocalInputValue = (isoString: string) => {
+        const d = new Date(isoString);
+        if (Number.isNaN(d.getTime())) return '';
+        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 16);
+    };
+
+    const fromLocalInputValue = (value: string) => {
+        const [datePart, timePart] = value.split('T');
+        if (!datePart || !timePart) return '';
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hour, minute] = timePart.split(':').map(Number);
+        const local = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
+        return local.toISOString();
     };
 
     const getItemDuration = (item: ScheduleItem) => {
@@ -467,20 +471,20 @@ const VirtualChannelManager = () => {
             )}
 
             {/* Header */}
-            <div className="flex justify-between items-end">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
                 <div>
                     <h2 className="text-2xl font-black uppercase tracking-widest text-white">Broadcast Deck</h2>
                     <p className="text-[10px] text-purple-500 font-black mt-1 uppercase tracking-widest">Virtual VOD-to-Live Systems</p>
                 </div>
                 <button
                     onClick={() => setIsCreating(true)}
-                    className="px-6 py-3 bg-purple-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-purple-500 transition-all shadow-xl shadow-purple-900/20"
+                    className="w-full md:w-auto px-6 py-3 bg-purple-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-purple-500 transition-all shadow-xl shadow-purple-900/20"
                 >
                     Initialize Channel
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
                 {/* Channel List */}
                 <div className="space-y-4">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-4">Active Frequencies</h3>
@@ -493,7 +497,7 @@ const VirtualChannelManager = () => {
                         <div
                             key={chan.id}
                             onClick={() => { setSelectedChannel(chan); setError(null); setSuccess(null); }}
-                            className={`p-6 rounded-[32px] border transition-all cursor-pointer ${selectedChannel?.id === chan.id ? 'bg-purple-600 border-purple-400 shadow-2xl shadow-purple-900/40' : 'bg-white/5 border-white/10 hover:border-white/20'}`}
+                            className={`p-4 md:p-6 rounded-[32px] border transition-all cursor-pointer ${selectedChannel?.id === chan.id ? 'bg-purple-600 border-purple-400 shadow-2xl shadow-purple-900/40' : 'bg-white/5 border-white/10 hover:border-white/20'}`}
                         >
                             <div className="flex items-center gap-4">
                                 <div className={`w-3 h-3 rounded-full ${chan.is_active ? 'bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse' : 'bg-red-400'}`} />
@@ -525,9 +529,9 @@ const VirtualChannelManager = () => {
 
                 {/* Schedule & Media Picker */}
                 {selectedChannel && (
-                    <div className="lg:col-span-2 space-y-8 bg-white/5 border border-white/10 rounded-[40px] p-8">
+                    <div className="lg:col-span-2 space-y-8 bg-white/5 border border-white/10 rounded-[40px] p-4 md:p-8">
                         {/* Channel Header */}
-                        <div className="flex justify-between items-start">
+                        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
                             <div>
                                 <h3 className="text-sm font-black uppercase tracking-widest text-white">{selectedChannel.name}</h3>
                                 <div className="flex items-center gap-4 mt-2">
@@ -583,7 +587,7 @@ const VirtualChannelManager = () => {
                         )}
 
                         {/* Schedule Items */}
-                        <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
+                        <div className="grid grid-cols-1 gap-3 max-h-[360px] md:max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                             {schedule.length === 0 && (
                                 <div className="py-16 text-center">
                                     <svg className="w-12 h-12 text-slate-800 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
@@ -603,7 +607,7 @@ const VirtualChannelManager = () => {
                                         onDragOver={(e) => handleDragOver(e, idx)}
                                         onDrop={() => handleDrop(idx)}
                                         onDragEnd={handleDragEnd}
-                                        className={`bg-black/40 border rounded-2xl p-4 flex items-center gap-4 group transition-all cursor-grab active:cursor-grabbing ${dragOverIndex === idx ? 'border-purple-500 bg-purple-500/10' :
+                                        className={`bg-black/40 border rounded-2xl p-3 md:p-4 flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4 group transition-all cursor-grab active:cursor-grabbing ${dragOverIndex === idx ? 'border-purple-500 bg-purple-500/10' :
                                                 dragIndex === idx ? 'opacity-50 border-white/5' :
                                                     item.ad_id ? 'border-orange-500/10' : 'border-white/5'
                                             }`}
@@ -719,7 +723,7 @@ const VirtualChannelManager = () => {
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto no-scrollbar pr-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto no-scrollbar pr-2">
                                 {pickerTab === 'media' ? (
                                     filteredMedia.length > 0 ? filteredMedia.map(media => {
                                         const alreadyInSchedule = schedule.some(s => s.media_id === media.id);
@@ -774,7 +778,11 @@ const VirtualChannelManager = () => {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <span className="text-[10px] font-black uppercase text-slate-400 group-hover:text-white truncate block">{ad.title}</span>
-                                                    <span className="text-[7px] text-orange-500/60 uppercase font-bold">{ad.duration || 30}s Ad Clip</span>
+                                                    {ad.duration ? (
+                                                        <span className="text-[7px] text-orange-500/60 uppercase font-bold">{ad.duration}s Ad Clip</span>
+                                                    ) : (
+                                                        <span className="text-[7px] text-orange-400 font-black">⚠ No duration</span>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
@@ -790,10 +798,10 @@ const VirtualChannelManager = () => {
 
                         {/* Broadcast Controls */}
                         <div className="mt-10 pt-8 border-t border-white/5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                                 {/* Stats */}
                                 <div className="space-y-4">
-                                <div className="grid grid-cols-3 gap-4">
+                                <div className="grid grid-cols-3 gap-3 md:gap-4">
                                     <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
                                         <span className="text-lg font-black text-white">{formatDuration(totalDuration)}</span>
                                         <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Total Loop</p>
@@ -808,7 +816,7 @@ const VirtualChannelManager = () => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                                     <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
                                         <p className="text-[8px] font-black uppercase text-slate-600">Live Viewers</p>
                                         <span className="text-2xl font-black text-emerald-400">{liveViewers}</span>
@@ -872,7 +880,7 @@ const VirtualChannelManager = () => {
                                         <label className="text-[8px] font-black uppercase text-slate-600 mb-2 block">Schedule Start Time</label>
                                         <input
                                             type="datetime-local"
-                                            defaultValue={selectedChannel.scheduled_start_time ? new Date(selectedChannel.scheduled_start_time).toISOString().slice(0, 16) : ''}
+                                            defaultValue={selectedChannel.scheduled_start_time ? toLocalInputValue(selectedChannel.scheduled_start_time) : ''}
                                             onChange={(e) => {
                                                 if (e.target.value) {
                                                     handleScheduleLive(e.target.value);
@@ -887,7 +895,7 @@ const VirtualChannelManager = () => {
                                         />
                                     </div>
 
-                                    <div className="flex gap-3">
+                                    <div className="flex flex-col sm:flex-row gap-3">
                                         <button
                                             onClick={() => selectedChannel && fetchSchedule(selectedChannel.id)}
                                             className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-slate-300 transition-all"
@@ -911,7 +919,7 @@ const VirtualChannelManager = () => {
                                         </button>
                                     </div>
 
-                                    <div className="flex gap-3">
+                                    <div className="flex flex-col sm:flex-row gap-3">
                                         {selectedChannel.is_active ? (
                                             <button
                                                 onClick={handleGoOffline}
