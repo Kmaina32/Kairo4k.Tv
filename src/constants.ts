@@ -9,10 +9,8 @@ export const VIRTUAL_CHANNELS: Channel[] = [];
 export const APP_BRANDING = {
   name: 'Genius Streamer',
   shortName: 'GENIUS',
-  // Default background for virtual channel broadcasts (dark purple gradient)
-  backgroundImage: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"%3E%3Cdefs%3E%3ClinearGradient id="g" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" stop-color="%231a1a2e"/%3E%3Cstop offset="50%25" stop-color="%232d1b4e"/%3E%3Cstop offset="100%25" stop-color="%230f0f23"/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill="url(%23g)" width="1920" height="1080"/%3E%3C/svg%3E',
-  // To use your own hosted background image, uncomment and set your URL:
-  // backgroundImage: 'https://your-domain.com/assets/channel-bg.jpg',
+  // Custom background image for virtual channel broadcasts
+  backgroundImage: 'https://www.kairo.me/wp-content/uploads/2021/02/kairo_home.jpg',
 };
 
 // User provided Pluto TV M3U content

@@ -130,7 +130,7 @@ const App = () => {
             id: vc.id,
             name: vc.name,
             group: 'Kairo Originals',
-            logo: vc.logo_url || 'https://your-logo-url.com/logo.png', // Replace with your app logo
+            logo: vc.logo_url || 'https://www.kairo.me/wp-content/uploads/2021/02/kairo_home.jpg', // Use your logo URL here
             url: 'virtual://' + vc.id, // Special protocol for virtual channels
             source: 'KAIRO ORIGINALS'
           }));
@@ -599,7 +599,7 @@ const App = () => {
             )}
 
             {activeView === 'live' && (
-              <div className="flex-1 relative p-4 flex flex-col gap-6 overflow-y-auto">
+              <div className="flex-1 relative p-4 flex flex-col gap-6 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                 {selectedChannel ? (
                   <>
                     <div className="w-full aspect-video relative rounded-[2rem] overflow-hidden shadow-2xl border border-white/10 bg-black group shrink-0">
