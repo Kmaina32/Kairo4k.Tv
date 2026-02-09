@@ -543,7 +543,6 @@ const App = () => {
                   onSelectMedia={(item) => {
                     localStorage.setItem('nexus_selected_media', JSON.stringify(item));
                     setActiveView('movies');
-                    window.location.reload();
                   }}
                 />
               </div>
@@ -566,7 +565,6 @@ const App = () => {
                   onSelectMedia={(item) => {
                     localStorage.setItem('nexus_selected_media', JSON.stringify(item));
                     setActiveView('movies');
-                    window.location.reload();
                   }}
                 />
               </div>
@@ -577,7 +575,6 @@ const App = () => {
                 <WatchlistPage onSelectMedia={(item) => {
                   localStorage.setItem('nexus_selected_media', JSON.stringify(item));
                   setActiveView('movies');
-                  window.location.reload();
                 }} />
               </div>
             )}
@@ -587,7 +584,6 @@ const App = () => {
                 <HistoryPage onSelectMedia={(item) => {
                   localStorage.setItem('nexus_selected_media', JSON.stringify(item));
                   setActiveView('movies');
-                  window.location.reload();
                 }} />
               </div>
             )}
@@ -677,7 +673,6 @@ const App = () => {
               onSelectMedia={(item) => {
                 localStorage.setItem('nexus_selected_media', JSON.stringify(item));
                 setActiveView('movies');
-                window.location.reload();
               }}
             />
           );
@@ -698,13 +693,11 @@ const App = () => {
           return <WatchlistPage onSelectMedia={(item) => {
             localStorage.setItem('nexus_selected_media', JSON.stringify(item));
             setActiveView('movies');
-            window.location.reload();
           }} />;
         case 'history':
           return <HistoryPage onSelectMedia={(item) => {
             localStorage.setItem('nexus_selected_media', JSON.stringify(item));
             setActiveView('movies');
-            window.location.reload();
           }} />;
         case 'subscriptions':
           return <SubscriptionsPage />;
@@ -714,7 +707,6 @@ const App = () => {
               onSelectMedia={(item) => {
                 localStorage.setItem('nexus_selected_media', JSON.stringify(item));
                 setActiveView('movies');
-                window.location.reload();
               }}
             />
           );
