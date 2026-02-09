@@ -30,11 +30,13 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
     const [schedule, setSchedule] = useState<any[]>([]);
     const [fallbackMode, setFallbackMode] = useState(false);
     const [fallbackIndex, setFallbackIndex] = useState(0);
+    const [durationOverrides, setDurationOverrides] = useState<Record<string, number>>({});
     const scheduleRef = useRef<any[]>([]);
     const countdownIntervalRef = useRef<any>(null);
     const syncIntervalRef = useRef<any>(null);
     const presenceChannelRef = useRef<any>(null);
     const viewerIdRef = useRef<string>('');
+    const startTimeRef = useRef<string | null>(null);
 
     if (!viewerIdRef.current) {
         const existing = localStorage.getItem('nexus_viewer_id');
@@ -140,6 +142,7 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
                     // Fallback sequential mode (no durations available)
                     setFallbackMode(true);
                     setFallbackIndex(0);
+                    prefetchMissingDurations(scheduleData);
                     const first = scheduleData[0];
                     const firstUrl = resolveMediaUrl(first);
                     if (!firstUrl) {
@@ -161,6 +164,7 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
                 }
 
                 // Calculate playback state based on server-side start time
+                startTimeRef.current = startTime;
                 const playbackState = calculatePlaybackState(scheduleData, startTime);
                 if (!playbackState.segment.url) {
                     setStatus('error');
@@ -170,6 +174,8 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
                 setCurrentSegment(playbackState.segment);
                 setNextSegmentTitle(playbackState.nextTitle);
                 setStatus('playing');
+
+                prefetchMissingDurations(scheduleData);
 
                 // Set up periodic sync check (every 5 seconds)
                 syncIntervalRef.current = setInterval(() => {
@@ -274,8 +280,71 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
 
     const getItemDuration = (item: any): number => {
         if (isTestDurationEnabled()) return ADMIN_TEST_DURATION_SECONDS;
+        if (item?.id && durationOverrides[item.id]) return durationOverrides[item.id];
         return item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
     };
+
+    const fetchDurationFromUrl = (url: string) => {
+        return new Promise<number>((resolve, reject) => {
+            const video = document.createElement('video');
+            let timeoutId: number | null = null;
+
+            const cleanup = () => {
+                if (timeoutId) window.clearTimeout(timeoutId);
+                video.remove();
+            };
+
+            video.preload = 'metadata';
+            video.crossOrigin = 'anonymous';
+            video.onloadedmetadata = () => {
+                const dur = Number.isFinite(video.duration) ? Math.round(video.duration) : 0;
+                cleanup();
+                if (dur > 0) resolve(dur);
+                else reject(new Error('Invalid duration'));
+            };
+            video.onerror = () => {
+                cleanup();
+                reject(new Error('Failed to load metadata'));
+            };
+
+            timeoutId = window.setTimeout(() => {
+                cleanup();
+                reject(new Error('Metadata timeout'));
+            }, 15000);
+
+            video.src = url;
+        });
+    };
+
+    const prefetchMissingDurations = async (items: any[]) => {
+        const missing = items.filter(item => getItemDuration(item) <= 0);
+        if (missing.length === 0) return;
+        for (const item of missing) {
+            try {
+                const url = resolveMediaUrl(item);
+                if (!url) continue;
+                const duration = await fetchDurationFromUrl(url);
+                setDurationOverrides(prev => (prev[item.id] ? prev : { ...prev, [item.id]: duration }));
+            } catch {
+                // ignore
+            }
+        }
+    };
+
+    useEffect(() => {
+        if (fallbackMode && scheduleRef.current.length > 0) {
+            const total = scheduleRef.current.reduce((acc, curr) => acc + getItemDuration(curr), 0);
+            if (total > 0) {
+                const startTime = startTimeRef.current || new Date().toISOString();
+                const playbackState = calculatePlaybackState(scheduleRef.current, startTime);
+                if (playbackState.segment.url) {
+                    setFallbackMode(false);
+                    setCurrentSegment(playbackState.segment);
+                    setNextSegmentTitle(playbackState.nextTitle);
+                }
+            }
+        }
+    }, [durationOverrides]);
 
     // Calculate playback state based on start time
     const calculatePlaybackState = (scheduleData: any[], startTime: string): { segment: ScheduleSegment; nextTitle: string } => {
@@ -469,20 +538,20 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
         <div className="relative w-full h-full">
             {/* Ad Badge Overlay */}
             {currentSegment.isAd && (
-                <div className="absolute top-4 right-4 z-30 px-3 py-1.5 bg-orange-600 rounded-lg shadow-xl animate-pulse">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-white">AD</span>
+                <div className="absolute top-2 right-2 md:top-4 md:right-4 z-30 px-2 md:px-3 py-1 bg-orange-600 rounded-lg shadow-xl animate-pulse">
+                    <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white">AD</span>
                 </div>
             )}
 
             {/* Now Playing / Up Next Overlay */}
-            <div className="absolute bottom-20 left-4 z-30 pointer-events-none">
-                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl px-4 py-2 max-w-xs">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-purple-400 mb-0.5">
+            <div className="absolute bottom-3 left-3 md:bottom-20 md:left-4 z-30 pointer-events-none">
+                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl px-3 md:px-4 py-2 max-w-[70vw] md:max-w-xs">
+                    <p className="text-[7px] md:text-[8px] font-black uppercase tracking-widest text-purple-400 mb-0.5">
                         {currentSegment.isAd ? 'AD BREAK' : 'NOW PLAYING'}
                     </p>
-                    <p className="text-[10px] font-black uppercase text-white truncate">{currentSegment.title}</p>
+                    <p className="text-[9px] md:text-[10px] font-black uppercase text-white truncate">{currentSegment.title}</p>
                     {nextSegmentTitle && (
-                        <p className="text-[8px] text-slate-500 mt-1 truncate">Up Next: {nextSegmentTitle}</p>
+                        <p className="text-[7px] md:text-[8px] text-slate-500 mt-1 truncate">Up Next: {nextSegmentTitle}</p>
                     )}
                     {fallbackMode && (
                         <p className="text-[7px] text-orange-400 mt-1 uppercase tracking-widest">Fallback mode</p>

@@ -254,7 +254,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
 
             {/* MAIN CONTENT AREA */}
             <main className="flex-1 overflow-y-auto no-scrollbar relative p-4 md:p-8 lg:p-12 pb-24 lg:pb-12 pt-20 lg:pt-12">
-                <div className="max-w-7xl mx-auto pb-8 lg:pb-0">
+                <div className={`mx-auto pb-8 lg:pb-0 ${adminView === 'broadcast' ? 'max-w-none' : 'max-w-7xl'}`}>
 
                     {/* VIEW HEADER */}
                     <div className="flex items-end justify-between mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -475,7 +475,11 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
 
                     {adminView === 'ads' && <AdManager />}
 
-                    {adminView === 'broadcast' && <VirtualChannelManager />}
+                    {adminView === 'broadcast' && (
+                        <div className="max-w-none">
+                            <VirtualChannelManager />
+                        </div>
+                    )}
 
                     {adminView === 'downloader' && <RemoteDownloader />}
                 </div>
