@@ -7,6 +7,7 @@ import AddPlaylistModal from './AddPlaylistModal';
 import MediaModal from './AddMediaModal';
 import MediaUploadPanel from './MediaUploadPanel';
 import StorageAnalytics from './StorageAnalytics';
+import R2ImageGallery from './R2ImageGallery';
 import CommandDeck from './CommandDeck';
 
 import AdManager from './AdManager';
@@ -26,7 +27,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     const [isAuditing, setIsAuditing] = useState(false);
 
     // Persist admin view in localStorage
-    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'ads' | 'broadcast' | 'downloader'>(() => {
+    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'images' | 'ads' | 'broadcast' | 'downloader'>(() => {
         const saved = localStorage.getItem('nexus_admin_view');
         return (saved as any) || 'overview';
     });
@@ -179,6 +180,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         { id: 'media' as const, label: 'Media Library', icon: <path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /> },
         { id: 'uploads' as const, label: 'Upload to R2', icon: <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /> },
         { id: 'analytics' as const, label: 'R2 Analytics', icon: <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /> },
+        { id: 'images' as const, label: 'R2 Images', icon: <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm4 8l2-2 3 3 3-4 2 3" /> },
         { id: 'ads' as const, label: 'Ad Manager', icon: <path d="M11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882ZM11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882Z" /> },
         { id: 'broadcast' as const, label: 'Virtual Channels', icon: <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.121l6.811-6.81z" /> },
         { id: 'downloader' as const, label: 'Remote Downloader', icon: <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> },
@@ -463,6 +465,11 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     {adminView === 'analytics' && (
                         <div className="animate-in fade-in zoom-in-95 duration-500">
                             <StorageAnalytics />
+                        </div>
+                    )}
+                    {adminView === 'images' && (
+                        <div className="animate-in fade-in zoom-in-95 duration-500">
+                            <R2ImageGallery />
                         </div>
                     )}
 

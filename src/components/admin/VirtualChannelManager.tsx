@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { CLOUDFLARE_BASE_URL } from '../../constants';
+import { ADMIN_TEST_DURATION_KEY, ADMIN_TEST_DURATION_SECONDS, CLOUDFLARE_BASE_URL } from '../../constants';
 
 interface ScheduleItem {
     id: string;
@@ -30,7 +30,6 @@ const VirtualChannelManager = () => {
     const [processing, setProcessing] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-    const [manualDuration, setManualDuration] = useState<{ [key: string]: string }>({});
     const [liveViewers, setLiveViewers] = useState<number>(0);
     const [liveMetrics, setLiveMetrics] = useState<{
         title: string;
@@ -42,14 +41,31 @@ const VirtualChannelManager = () => {
         loopDuration: number;
         index: number;
     } | null>(null);
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [pendingName, setPendingName] = useState('');
+    const [showMissingReport, setShowMissingReport] = useState(false);
+    const [showResyncConfirm, setShowResyncConfirm] = useState(false);
+    const [testDurationEnabled, setTestDurationEnabled] = useState(() => localStorage.getItem(ADMIN_TEST_DURATION_KEY) === 'true');
 
     useEffect(() => {
         fetchData();
     }, []);
 
     useEffect(() => {
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === ADMIN_TEST_DURATION_KEY) {
+                setTestDurationEnabled(event.newValue === 'true');
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, []);
+
+    useEffect(() => {
         if (selectedChannel) {
             fetchSchedule(selectedChannel.id);
+            setPendingName(selectedChannel.name || '');
+            setIsEditingName(false);
         }
     }, [selectedChannel?.id]);
 
@@ -81,6 +97,25 @@ const VirtualChannelManager = () => {
         if (adsData) setAdsList(adsData);
     };
 
+    const saveChannelName = async () => {
+        if (!selectedChannel) return;
+        const name = pendingName.trim();
+        if (!name) {
+            setError('Channel name cannot be empty');
+            return;
+        }
+        const { error } = await supabase
+            .from('virtual_channels')
+            .upsert({ id: selectedChannel.id, name }, { onConflict: 'id' });
+        if (error) {
+            setError(error.message);
+            return;
+        }
+        setSuccess('Channel name updated');
+        setIsEditingName(false);
+        fetchData();
+    };
+
     const fetchSchedule = async (channelId: string) => {
         const { data } = await supabase
             .from('channel_schedule')
@@ -90,7 +125,7 @@ const VirtualChannelManager = () => {
         if (data) {
             await autofillScheduleDurations(data);
             setSchedule(data.map(item => {
-                const resolved = item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
+                const resolved = toNumber(item.duration) || toNumber(item.media_library?.duration) || toNumber(item.ads_library?.duration) || 0;
                 return { ...item, duration: resolved };
             }));
         }
@@ -128,6 +163,10 @@ const VirtualChannelManager = () => {
             payload.ad_id = id;
             payload.duration = duration;
         }
+
+        // Remove undefined values to avoid Supabase errors
+        if (payload.media_id === undefined) { delete payload.media_id; }
+        if (payload.ad_id === undefined) { delete payload.ad_id; }
 
         const { error } = await supabase.from('channel_schedule').insert([payload]);
         if (!error) {
@@ -316,26 +355,33 @@ const VirtualChannelManager = () => {
         fetchSchedule(selectedChannel.id);
     };
 
-    const updateItemDuration = async (itemId: string, newDuration: number) => {
-        const { error } = await supabase
-            .from('channel_schedule')
-            .upsert({ id: itemId, duration: newDuration }, { onConflict: 'id' });
-
-        if (!error && selectedChannel) {
-            fetchSchedule(selectedChannel.id);
-        }
-    };
-
     const filteredMedia = mediaList.filter(m =>
         m.title.toLowerCase().includes(mediaSearch.toLowerCase()) ||
         m.category?.toLowerCase().includes(mediaSearch.toLowerCase())
     );
 
+    const toggleTestDuration = () => {
+        const next = !testDurationEnabled;
+        setTestDurationEnabled(next);
+        localStorage.setItem(ADMIN_TEST_DURATION_KEY, String(next));
+    };
+
+    const toNumber = (value: unknown) => {
+        if (typeof value === 'number') return value;
+        if (typeof value === 'string' && value.trim() !== '') {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+        return 0;
+    };
+
+    const getItemDuration = (item: ScheduleItem) => {
+        if (testDurationEnabled) return ADMIN_TEST_DURATION_SECONDS;
+        return toNumber(item.duration) || toNumber(item.media_library?.duration) || toNumber(item.ads_library?.duration) || 0;
+    };
+
     // Calculate total duration, handling null/0 values
-    const totalDuration = schedule.reduce((acc, curr) => {
-        const dur = curr.duration || curr.media_library?.duration || curr.ads_library?.duration || 0;
-        return acc + dur;
-    }, 0);
+    const totalDuration = schedule.reduce((acc, curr) => acc + getItemDuration(curr), 0);
 
     const mediaCount = schedule.filter(s => s.media_id).length;
     const adCount = schedule.filter(s => s.ad_id).length;
@@ -365,15 +411,13 @@ const VirtualChannelManager = () => {
         return local.toISOString();
     };
 
-    const getItemDuration = (item: ScheduleItem) => {
-        return item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
-    };
+    const missingDurationCount = schedule.filter(item => getItemDuration(item) <= 0).length;
 
     const autofillScheduleDurations = async (items: ScheduleItem[]) => {
         const updates = items
-            .filter(item => (!item.duration || item.duration <= 0))
+            .filter(item => (toNumber(item.duration) <= 0))
             .map(item => {
-                const resolved = item.media_library?.duration || item.ads_library?.duration || 0;
+                const resolved = toNumber(item.media_library?.duration) || toNumber(item.ads_library?.duration) || 0;
                 if (resolved > 0) {
                     return { id: item.id, duration: resolved };
                 }
@@ -382,8 +426,159 @@ const VirtualChannelManager = () => {
             .filter(Boolean) as { id: string; duration: number }[];
 
         if (updates.length > 0) {
-            await supabase.from('channel_schedule').upsert(updates, { onConflict: 'id' });
+            for (const update of updates) {
+                await supabase.from('channel_schedule').update({ duration: update.duration }).eq('id', update.id);
+            }
         }
+    };
+
+    const normalizeR2Url = (url: string): string => {
+        if (url.startsWith('http')) {
+            if (url.includes('.r2.dev/')) {
+                const [, path] = url.split('.r2.dev/');
+                return `${CLOUDFLARE_BASE_URL}${(path || '').replace(/^\/+/, '')}`;
+            }
+            return url;
+        }
+        return `${CLOUDFLARE_BASE_URL}${url.replace(/^\/+/, '')}`;
+    };
+
+    const resolveMediaUrl = (item: ScheduleItem) => {
+        if (item.media_library?.stream_url) {
+            return normalizeR2Url(item.media_library.stream_url);
+        }
+        if (item.ads_library?.ad_url) {
+            return normalizeR2Url(item.ads_library.ad_url);
+        }
+        return '';
+    };
+
+    const getMissingDurationItems = () => {
+        return schedule.filter(item => getItemDuration(item) <= 0).map(item => ({
+            id: item.id,
+            title: item.media_library?.title || item.ads_library?.title || 'Unknown',
+            type: item.ad_id ? 'AD' : 'MEDIA',
+            url: resolveMediaUrl(item)
+        }));
+    };
+
+    const retryDurationForItem = async (item: { id: string; url: string; title: string; type: string }) => {
+        if (!selectedChannel) return;
+        if (!item.url) {
+            setError('Missing media URL');
+            return;
+        }
+        setProcessing(`Retrying duration for ${item.title}...`);
+        setError(null);
+        try {
+            const duration = await fetchDurationFromUrl(item.url);
+            const scheduleItem = schedule.find(s => s.id === item.id);
+            if (scheduleItem?.media_id) {
+                await supabase.from('media_library').update({
+                    duration,
+                    updated_at: new Date().toISOString()
+                }).eq('id', scheduleItem.media_id);
+            }
+            if (scheduleItem?.ad_id) {
+                await supabase.from('ads_library').update({
+                    duration,
+                    updated_at: new Date().toISOString()
+                }).eq('id', scheduleItem.ad_id);
+            }
+            await supabase.from('channel_schedule').update({
+                duration
+            }).eq('id', item.id);
+            fetchSchedule(selectedChannel.id);
+            setSuccess(`Duration updated for ${item.title}`);
+        } catch (err: any) {
+            setError(err.message || 'Retry failed');
+        } finally {
+            setProcessing(null);
+            setTimeout(() => { setSuccess(null); setError(null); }, 3000);
+        }
+    };
+
+    const fetchDurationFromUrl = (url: string) => {
+        return new Promise<number>((resolve, reject) => {
+            const video = document.createElement('video');
+            let timeoutId: number | null = null;
+
+            const cleanup = () => {
+                if (timeoutId) window.clearTimeout(timeoutId);
+                video.remove();
+            };
+
+            video.preload = 'metadata';
+            video.crossOrigin = 'anonymous';
+            video.onloadedmetadata = () => {
+                const dur = Number.isFinite(video.duration) ? Math.round(video.duration) : 0;
+                cleanup();
+                if (dur > 0) resolve(dur);
+                else reject(new Error('Invalid duration'));
+            };
+            video.onerror = () => {
+                cleanup();
+                reject(new Error('Failed to load metadata'));
+            };
+
+            timeoutId = window.setTimeout(() => {
+                cleanup();
+                reject(new Error('Metadata timeout'));
+            }, 15000);
+
+            video.src = url;
+        });
+    };
+
+    const backfillMissingDurations = async () => {
+        if (!selectedChannel) return;
+        const pending = schedule.filter(item => getItemDuration(item) <= 0);
+        if (pending.length === 0) {
+            setSuccess('All items already have durations');
+            setTimeout(() => setSuccess(null), 3000);
+            return;
+        }
+
+        setProcessing('Calculating durations...');
+        setError(null);
+        try {
+            for (const item of pending) {
+                const url = resolveMediaUrl(item);
+                if (!url) continue;
+
+                try {
+                    const duration = await fetchDurationFromUrl(url);
+                    if (item.media_id) {
+                        await supabase.from('media_library').update({ duration }).eq('id', item.media_id);
+                    }
+                    if (item.ad_id) {
+                        await supabase.from('ads_library').update({ duration }).eq('id', item.ad_id);
+                    }
+                    await supabase.from('channel_schedule').update({ duration }).eq('id', item.id);
+                } catch (e) {
+                    console.warn('Duration backfill failed for item', item.id, e);
+                }
+            }
+
+            fetchSchedule(selectedChannel.id);
+            setSuccess('Durations recalculated');
+        } catch (err: any) {
+            setError(err.message || 'Failed to recalculate durations');
+        } finally {
+            setProcessing(null);
+            setTimeout(() => { setSuccess(null); setError(null); }, 4000);
+        }
+    };
+
+    const forceResyncStart = async () => {
+        if (!selectedChannel) return;
+        const now = new Date().toISOString();
+        await supabase.from('virtual_channels').upsert({
+            id: selectedChannel.id,
+            live_started_at: now,
+            is_active: true
+        }, { onConflict: 'id' });
+        fetchData();
     };
 
     const computeLiveMetrics = () => {
@@ -449,7 +644,7 @@ const VirtualChannelManager = () => {
     const getScheduleTimeline = () => {
         let cumulative = 0;
         return schedule.map(item => {
-            const duration = item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
+            const duration = getItemDuration(item);
             const start = cumulative;
             cumulative += duration;
             return { ...item, startTime: start, endTime: cumulative };
@@ -533,7 +728,40 @@ const VirtualChannelManager = () => {
                         {/* Channel Header */}
                         <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
                             <div>
-                                <h3 className="text-sm font-black uppercase tracking-widest text-white">{selectedChannel.name}</h3>
+                                {!isEditingName ? (
+                                    <div className="flex items-center gap-3">
+                                        <h3 className="text-sm font-black uppercase tracking-widest text-white">{selectedChannel.name}</h3>
+                                        <button
+                                            onClick={() => setIsEditingName(true)}
+                                            className="px-2 py-1 text-[9px] font-black uppercase tracking-widest bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all"
+                                        >
+                                            Edit
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                                        <input
+                                            value={pendingName}
+                                            onChange={(e) => setPendingName(e.target.value)}
+                                            className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[10px] text-white focus:outline-none focus:border-purple-500 font-mono w-full sm:w-64"
+                                            placeholder="Channel name"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={saveChannelName}
+                                                className="px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-purple-600 text-white hover:bg-purple-500 transition-all"
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                onClick={() => { setIsEditingName(false); setPendingName(selectedChannel.name || ''); }}
+                                                className="px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-white/5 text-slate-400 hover:text-white transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-4 mt-2">
                                     <span className="text-[10px] font-mono text-purple-400 uppercase">{schedule.length} Segments</span>
                                     <span className="text-[10px] font-mono text-slate-600">•</span>
@@ -560,7 +788,7 @@ const VirtualChannelManager = () => {
                                 <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Broadcast Timeline ({formatDuration(totalDuration)} total)</h4>
                                 <div className="flex h-8 rounded-xl overflow-hidden border border-white/5">
                                     {getScheduleTimeline().map((item, idx) => {
-                                        const dur = item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
+                                        const dur = getItemDuration(item);
                                         const widthPercent = totalDuration > 0 ? (dur / totalDuration) * 100 : 0;
                                         return (
                                             <div
@@ -596,8 +824,7 @@ const VirtualChannelManager = () => {
                                 </div>
                             )}
                             {schedule.map((item, idx) => {
-                                const dur = item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
-                                const hasDurationIssue = !item.duration || item.duration <= 0;
+                                const dur = getItemDuration(item);
 
                                 return (
                                     <div
@@ -608,8 +835,8 @@ const VirtualChannelManager = () => {
                                         onDrop={() => handleDrop(idx)}
                                         onDragEnd={handleDragEnd}
                                         className={`bg-black/40 border rounded-2xl p-3 md:p-4 flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4 group transition-all cursor-grab active:cursor-grabbing ${dragOverIndex === idx ? 'border-purple-500 bg-purple-500/10' :
-                                                dragIndex === idx ? 'opacity-50 border-white/5' :
-                                                    item.ad_id ? 'border-orange-500/10' : 'border-white/5'
+                                            dragIndex === idx ? 'opacity-50 border-white/5' :
+                                                item.ad_id ? 'border-orange-500/10' : 'border-white/5'
                                             }`}
                                     >
                                         <div className="flex flex-col gap-0.5 opacity-30 group-hover:opacity-60 transition-opacity">
@@ -643,26 +870,11 @@ const VirtualChannelManager = () => {
                                                 )}
                                             </div>
 
-                                            {/* Duration Input (shown if duration is 0 or missing) */}
                                             <div className="flex items-center gap-2 mt-1">
-                                                <input
-                                                    type="number"
-                                                    value={manualDuration[item.id] ?? (hasDurationIssue ? '' : dur)}
-                                                    onChange={(e) => setManualDuration({ ...manualDuration, [item.id]: e.target.value })}
-                                                    onBlur={(e) => {
-                                                        if (e.target.value) {
-                                                            updateItemDuration(item.id, parseInt(e.target.value) || 60);
-                                                        }
-                                                        setManualDuration({ ...manualDuration, [item.id]: '' });
-                                                    }}
-                                                    placeholder={hasDurationIssue ? "Set duration (sec)" : `${dur}s`}
-                                                    className={`bg-black/40 border rounded px-2 py-1 text-[9px] font-mono text-white w-24 focus:outline-none ${hasDurationIssue ? 'border-orange-500/50 focus:border-orange-500' : 'border-white/10 focus:border-purple-500'}`}
-                                                />
-                                                {!hasDurationIssue && (
+                                                {dur > 0 ? (
                                                     <span className="text-[9px] font-mono text-slate-500">{formatDuration(dur)}</span>
-                                                )}
-                                                {hasDurationIssue && (
-                                                    <span className="text-[8px] text-orange-400 font-black uppercase">Duration needed</span>
+                                                ) : (
+                                                    <span className="text-[8px] text-orange-400 font-black uppercase">Duration missing</span>
                                                 )}
                                             </div>
                                         </div>
@@ -723,7 +935,7 @@ const VirtualChannelManager = () => {
                                 )}
                             </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto no-scrollbar pr-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto no-scrollbar pr-2">
                                 {pickerTab === 'media' ? (
                                     filteredMedia.length > 0 ? filteredMedia.map(media => {
                                         const alreadyInSchedule = schedule.some(s => s.media_id === media.id);
@@ -801,63 +1013,63 @@ const VirtualChannelManager = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                                 {/* Stats */}
                                 <div className="space-y-4">
-                                <div className="grid grid-cols-3 gap-3 md:gap-4">
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                        <span className="text-lg font-black text-white">{formatDuration(totalDuration)}</span>
-                                        <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Total Loop</p>
+                                    <div className="grid grid-cols-3 gap-3 md:gap-4">
+                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
+                                            <span className="text-lg font-black text-white">{formatDuration(totalDuration)}</span>
+                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Total Loop</p>
+                                        </div>
+                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
+                                            <span className="text-lg font-black text-purple-400">{mediaCount}</span>
+                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Media</p>
+                                        </div>
+                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
+                                            <span className="text-lg font-black text-orange-400">{adCount}</span>
+                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Ads</p>
+                                        </div>
                                     </div>
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                        <span className="text-lg font-black text-purple-400">{mediaCount}</span>
-                                        <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Media</p>
-                                    </div>
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                        <span className="text-lg font-black text-orange-400">{adCount}</span>
-                                        <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Ads</p>
-                                    </div>
-                                </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                        <p className="text-[8px] font-black uppercase text-slate-600">Live Viewers</p>
-                                        <span className="text-2xl font-black text-emerald-400">{liveViewers}</span>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                                            <p className="text-[8px] font-black uppercase text-slate-600">Live Viewers</p>
+                                            <span className="text-2xl font-black text-emerald-400">{liveViewers}</span>
+                                        </div>
+                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                                            <p className="text-[8px] font-black uppercase text-slate-600">Current Segment</p>
+                                            {liveMetrics ? (
+                                                <div className="mt-1">
+                                                    <span className="text-[10px] font-black uppercase text-white block truncate">{liveMetrics.title}</span>
+                                                    <span className={`text-[8px] font-black uppercase ${liveMetrics.isAd ? 'text-orange-400' : 'text-purple-400'}`}>
+                                                        {liveMetrics.isAd ? 'AD' : 'MEDIA'} â€¢ #{liveMetrics.index + 1}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[9px] text-slate-500">No signal</span>
+                                            )}
+                                        </div>
                                     </div>
+
                                     <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                        <p className="text-[8px] font-black uppercase text-slate-600">Current Segment</p>
+                                        <p className="text-[8px] font-black uppercase text-slate-600">Segment Time</p>
                                         {liveMetrics ? (
-                                            <div className="mt-1">
-                                                <span className="text-[10px] font-black uppercase text-white block truncate">{liveMetrics.title}</span>
-                                                <span className={`text-[8px] font-black uppercase ${liveMetrics.isAd ? 'text-orange-400' : 'text-purple-400'}`}>
-                                                    {liveMetrics.isAd ? 'AD' : 'MEDIA'} â€¢ #{liveMetrics.index + 1}
-                                                </span>
+                                            <div className="flex items-center justify-between mt-2">
+                                                <span className="text-[10px] font-mono text-white">{formatDuration(liveMetrics.segmentElapsed)}</span>
+                                                <div className="flex-1 mx-3 h-1 bg-white/10 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-purple-500"
+                                                        style={{ width: `${Math.min((liveMetrics.segmentElapsed / Math.max(liveMetrics.segmentDuration, 1)) * 100, 100)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-[10px] font-mono text-slate-400">-{formatDuration(liveMetrics.segmentRemaining)}</span>
                                             </div>
                                         ) : (
-                                            <span className="text-[9px] text-slate-500">No signal</span>
+                                            <span className="text-[9px] text-slate-500">Awaiting live signal</span>
                                         )}
                                     </div>
-                                </div>
 
-                                <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                    <p className="text-[8px] font-black uppercase text-slate-600">Segment Time</p>
-                                    {liveMetrics ? (
-                                        <div className="flex items-center justify-between mt-2">
-                                            <span className="text-[10px] font-mono text-white">{formatDuration(liveMetrics.segmentElapsed)}</span>
-                                            <div className="flex-1 mx-3 h-1 bg-white/10 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-purple-500"
-                                                    style={{ width: `${Math.min((liveMetrics.segmentElapsed / Math.max(liveMetrics.segmentDuration, 1)) * 100, 100)}%` }}
-                                                />
-                                            </div>
-                                            <span className="text-[10px] font-mono text-slate-400">-{formatDuration(liveMetrics.segmentRemaining)}</span>
-                                        </div>
-                                    ) : (
-                                        <span className="text-[9px] text-slate-500">Awaiting live signal</span>
-                                    )}
-                                </div>
-
-                                <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-3 h-3 rounded-full ${selectedChannel.is_active ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse' : 'bg-red-400'}`} />
-                                        <span className={`text-sm font-black uppercase tracking-widest ${selectedChannel.is_active ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-3 h-3 rounded-full ${selectedChannel.is_active ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse' : 'bg-red-400'}`} />
+                                            <span className={`text-sm font-black uppercase tracking-widest ${selectedChannel.is_active ? 'text-emerald-400' : 'text-red-400'}`}>
                                                 {selectedChannel.is_active
                                                     ? selectedChannel.scheduled_start_time
                                                         ? 'SCHEDULED'
@@ -876,6 +1088,30 @@ const VirtualChannelManager = () => {
 
                                 {/* Controls */}
                                 <div className="space-y-4">
+                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div>
+                                                <p className="text-[8px] font-black uppercase text-slate-600">Test Duration</p>
+                                                <p className="text-[9px] font-mono text-slate-500 mt-1">Forces 60s segments</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={testDurationEnabled}
+                                                onClick={toggleTestDuration}
+                                                className={`relative inline-flex h-7 w-14 items-center rounded-full border transition-colors ${testDurationEnabled ? 'bg-emerald-600/80 border-emerald-500/60' : 'bg-white/5 border-white/10'}`}
+                                            >
+                                                <span
+                                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${testDurationEnabled ? 'translate-x-7' : 'translate-x-1'}`}
+                                                />
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 text-[8px] font-black uppercase tracking-widest">
+                                            <span className={testDurationEnabled ? 'text-emerald-400' : 'text-slate-500'}>
+                                                {testDurationEnabled ? 'ON' : 'OFF'}
+                                            </span>
+                                        </div>
+                                    </div>
                                     <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
                                         <label className="text-[8px] font-black uppercase text-slate-600 mb-2 block">Schedule Start Time</label>
                                         <input
@@ -903,16 +1139,14 @@ const VirtualChannelManager = () => {
                                             Refresh Schedule
                                         </button>
                                         <button
-                                            onClick={async () => {
-                                                if (!selectedChannel) return;
-                                                const now = new Date().toISOString();
-                                                await supabase.from('virtual_channels').upsert({
-                                                    id: selectedChannel.id,
-                                                    live_started_at: now,
-                                                    is_active: true
-                                                }, { onConflict: 'id' });
-                                                fetchData();
-                                            }}
+                                            onClick={backfillMissingDurations}
+                                            disabled={processing !== null}
+                                            className="flex-1 py-3 bg-orange-600/80 hover:bg-orange-600 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white transition-all disabled:opacity-50"
+                                        >
+                                            Auto-Calc Durations
+                                        </button>
+                                        <button
+                                            onClick={() => setShowResyncConfirm(true)}
                                             className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white transition-all"
                                         >
                                             Resync Start
@@ -932,7 +1166,7 @@ const VirtualChannelManager = () => {
                                         ) : (
                                             <button
                                                 onClick={handleGoLive}
-                                                disabled={schedule.length === 0 || processing !== null}
+                                                disabled={schedule.length === 0 || processing !== null || missingDurationCount > 0}
                                                 className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/30 disabled:cursor-not-allowed rounded-2xl font-black uppercase text-xs tracking-[0.2em] text-white transition-all shadow-2xl shadow-emerald-900/20 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
                                             >
                                                 {processing ? (
@@ -954,8 +1188,16 @@ const VirtualChannelManager = () => {
                                         <p className="text-[9px] text-red-400/60 font-mono text-center">Add at least one media item to go live</p>
                                     )}
 
-                                    {totalDuration === 0 && schedule.length > 0 && (
-                                        <p className="text-[9px] text-orange-400/80 font-mono text-center">⚠ Set duration for all items above</p>
+                                    {missingDurationCount > 0 && (
+                                        <div className="text-center space-y-2">
+                                            <p className="text-[9px] text-orange-400/80 font-mono">⚠ {missingDurationCount} item(s) missing duration</p>
+                                            <button
+                                                onClick={() => setShowMissingReport(true)}
+                                                className="text-[9px] font-black uppercase tracking-widest text-orange-400 hover:text-orange-300 transition-all"
+                                            >
+                                                View Missing Report
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -986,8 +1228,86 @@ const VirtualChannelManager = () => {
                     </div>
                 </div>
             )}
+
+            {showMissingReport && (
+                <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="w-full max-w-2xl bg-[#0f172a] border border-white/10 rounded-[32px] p-6 shadow-2xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-black uppercase tracking-widest text-white">Missing Duration Report</h3>
+                            <button
+                                onClick={() => setShowMissingReport(false)}
+                                className="px-3 py-1.5 bg-white/5 rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all"
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <div className="max-h-[420px] overflow-y-auto no-scrollbar space-y-2">
+                            {getMissingDurationItems().map(item => (
+                                <div key={item.id} className="bg-black/40 border border-white/5 rounded-xl p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black uppercase text-white truncate">{item.title}</p>
+                                            <p className="text-[8px] text-slate-500 font-mono truncate">{item.url || 'Missing URL'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${item.type === 'AD' ? 'bg-orange-600/20 text-orange-400' : 'bg-purple-600/20 text-purple-400'}`}>
+                                                {item.type}
+                                            </span>
+                                            <button
+                                                onClick={() => retryDurationForItem(item)}
+                                                disabled={!item.url || processing !== null}
+                                                className="px-2 py-1 text-[8px] font-black uppercase tracking-widest rounded bg-white/5 border border-white/10 text-slate-300 hover:text-white disabled:opacity-40"
+                                            >
+                                                Retry
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {getMissingDurationItems().length === 0 && (
+                                <div className="py-10 text-center text-[9px] text-slate-500">All items have durations.</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showResyncConfirm && (
+                <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="w-full max-w-md bg-[#0f172a] border border-white/10 rounded-[32px] p-6 shadow-2xl">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-white mb-3">Force Resync Start</h3>
+                        <p className="text-[10px] text-slate-400 font-mono mb-6">
+                            This resets the live start time for all viewers and will desync anyone currently watching.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowResyncConfirm(false)}
+                                className="flex-1 py-3 bg-white/5 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-slate-400"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setShowResyncConfirm(false);
+                                    await forceResyncStart();
+                                }}
+                                className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white"
+                            >
+                                Force Resync
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 export default VirtualChannelManager;
+
+
+
+
+
+
+

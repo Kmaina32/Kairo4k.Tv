@@ -44,7 +44,10 @@ const StorageAnalytics = () => {
         );
     }
 
-    const usagePercentage = Math.min(100, (stats.totalSize / (100 * 1024 * 1024 * 1024)) * 100); // Assume 100GB limit
+    const TOTAL_LIMIT = 10 * 1024 * 1024 * 1024; // 10 GB limit
+    const usagePercentage = Math.min(100, (stats.totalSize / TOTAL_LIMIT) * 100);
+    const usedGB = (stats.totalSize / (1024 * 1024 * 1024)).toFixed(2);
+    const remainingGB = ((TOTAL_LIMIT - stats.totalSize) / (1024 * 1024 * 1024)).toFixed(2);
 
     return (
         <div className="space-y-6">
@@ -140,23 +143,46 @@ const StorageAnalytics = () => {
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-black uppercase tracking-widest text-white">Storage Usage</h3>
-                    <span className="text-xs font-mono text-slate-400">{usagePercentage.toFixed(2)}% of 100 GB</span>
+                    <span className="text-xs font-mono text-slate-400">
+                        {usedGB} GB / 10 GB ({usagePercentage.toFixed(1)}%)
+                    </span>
                 </div>
-                <div className="h-4 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-6 bg-white/5 rounded-full overflow-hidden relative">
                     <div
                         className={`h-full transition-all duration-1000 ${usagePercentage > 90
-                                ? 'bg-red-600'
-                                : usagePercentage > 70
-                                    ? 'bg-yellow-600'
-                                    : 'bg-emerald-600'
+                            ? 'bg-red-600'
+                            : usagePercentage > 70
+                                ? 'bg-yellow-600'
+                                : 'bg-emerald-600'
                             }`}
                         style={{ width: `${usagePercentage}%` }}
                     />
+                    {/* Usage indicator text on the bar */}
+                    {usagePercentage > 15 && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[10px] font-black text-white drop-shadow-md">
+                                {usedGB} GB used
+                            </span>
+                        </div>
+                    )}
                 </div>
-                <div className="flex justify-between mt-2 text-xs text-slate-500">
-                    <span>0 GB</span>
-                    <span>100 GB</span>
+                <div className="flex justify-between mt-3 text-xs">
+                    <span className="text-emerald-400">0 GB</span>
+                    <span className="text-yellow-500">{remainingGB} GB remaining</span>
+                    <span className="text-red-500">10 GB</span>
                 </div>
+
+                {/* Warning if usage is high */}
+                {usagePercentage > 80 && (
+                    <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-3">
+                        <svg className="w-5 h-5 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <p className="text-xs text-red-400">
+                            Storage usage is at {usagePercentage.toFixed(1)}%. Consider cleaning up old files.
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* File Distribution */}

@@ -13,6 +13,9 @@ export const APP_BRANDING = {
   backgroundImage: 'https://www.kairo.me/wp-content/uploads/2021/02/kairo_home.jpg',
 };
 
+export const ADMIN_TEST_DURATION_SECONDS = 60;
+export const ADMIN_TEST_DURATION_KEY = 'nexus_admin_test_duration_enabled';
+
 // User provided Pluto TV M3U content
 const PLUTO_TV_M3U = "data:text/plain;charset=utf-8," + encodeURIComponent(`#EXTM3U
 #EXTINF:-1 tvg-id="90210.us@SD",90210

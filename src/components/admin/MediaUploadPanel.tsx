@@ -66,6 +66,38 @@ const MediaUploadPanel = ({ onUploadComplete }: MediaUploadPanelProps) => {
         });
     };
 
+    const fetchDurationFromUrl = (url: string) => {
+        return new Promise<number>((resolve, reject) => {
+            const video = document.createElement('video');
+            let timeoutId: number | null = null;
+
+            const cleanup = () => {
+                if (timeoutId) window.clearTimeout(timeoutId);
+                video.remove();
+            };
+
+            video.preload = 'metadata';
+            video.crossOrigin = 'anonymous';
+            video.onloadedmetadata = () => {
+                const dur = Number.isFinite(video.duration) ? Math.round(video.duration) : 0;
+                cleanup();
+                if (dur > 0) resolve(dur);
+                else reject(new Error('Invalid duration'));
+            };
+            video.onerror = () => {
+                cleanup();
+                reject(new Error('Failed to load metadata'));
+            };
+
+            timeoutId = window.setTimeout(() => {
+                cleanup();
+                reject(new Error('Metadata timeout'));
+            }, 15000);
+
+            video.src = url;
+        });
+    };
+
     const fetchUnlinkedFiles = async () => {
         setIsLoadingUnlinked(true);
         try {
@@ -122,6 +154,13 @@ const MediaUploadPanel = ({ onUploadComplete }: MediaUploadPanelProps) => {
                 const filename = file.key.split('/').pop() || 'Untitled';
                 const title = filename.replace(/\.[^/.]+$/, "").replace(/_/g, ' ');
 
+                let duration = 0;
+                try {
+                    duration = await fetchDurationFromUrl(file.url);
+                } catch (error) {
+                    console.warn('Duration fetch failed for', file.url);
+                }
+
                 await supabase.from('media_library').insert({
                     title: title,
                     description: `Imported from storage: ${filename}`,
@@ -129,7 +168,7 @@ const MediaUploadPanel = ({ onUploadComplete }: MediaUploadPanelProps) => {
                     genre: 'Uncategorized',
                     stream_url: file.url.replace(CLOUDFLARE_BASE_URL, ''), // Store relative path if convention, or full URL
                     is_active: true,
-                    duration: 0
+                    duration
                 });
             }
 
@@ -196,6 +235,12 @@ const MediaUploadPanel = ({ onUploadComplete }: MediaUploadPanelProps) => {
 
             if (!videoUpload) {
                 throw new Error('No video file selected');
+            }
+
+            if (!videoUpload.metadata?.duration || videoUpload.metadata.duration <= 0) {
+                showDialog('Missing Duration', 'We could not read the video duration. Please re-select the file or try a different video.', undefined, 'danger', true);
+                setIsUploading(false);
+                return;
             }
 
             // Upload video
@@ -276,6 +321,7 @@ const MediaUploadPanel = ({ onUploadComplete }: MediaUploadPanelProps) => {
                 release_year: formData.release_year,
                 stream_url: videoUrl.replace(CLOUDFLARE_BASE_URL, ''),
                 cover_url: coverUrl.replace(CLOUDFLARE_BASE_URL, ''),
+                duration: videoUpload.metadata?.duration ? Math.round(videoUpload.metadata.duration) : 0,
                 is_active: true,
             }).select().single();
 

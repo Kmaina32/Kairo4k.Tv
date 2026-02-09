@@ -75,6 +75,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName, onE
   const [isAdPlaying, setIsAdPlaying] = useState(false);
   const adRef = useRef<any>(null);
   const lastAdTimeRef = useRef<number>(0);
+  const midRollInFlightRef = useRef<boolean>(false);
 
   const resetControlsTimeout = useCallback(() => {
     setShowControls(true);
@@ -161,7 +162,7 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName, onE
 
         // AD ENGINE: MID-ROLL CHECK
         const checkMidRoll = async () => {
-          if (isAdPlaying) return;
+          if (isAdPlaying || midRollInFlightRef.current) return;
           const currentTime = Math.floor(video.currentTime);
 
           onTimeUpdateRef.current && onTimeUpdateRef.current(video.currentTime);
@@ -177,13 +178,18 @@ const VideoPlayer = ({ url, poster, isTheater, onToggleTheater, channelName, onE
 
           const freqSec = (config.frequency_minutes || 10) * 60;
 
-          if (currentTime > 0 && currentTime % freqSec === 0 && currentTime !== lastAdTimeRef.current) {
-            lastAdTimeRef.current = currentTime;
-            video.pause();
-            const { data: ads } = await supabase.from('ads_library').select('*').eq('is_active', true);
-            if (ads && ads.length > 0) {
-              setActiveAd(ads[Math.floor(Math.random() * ads.length)]);
-              setIsAdPlaying(true);
+          if (currentTime > 0 && currentTime - lastAdTimeRef.current >= freqSec) {
+            midRollInFlightRef.current = true;
+            try {
+              const { data: ads } = await supabase.from('ads_library').select('*').eq('is_active', true);
+              if (ads && ads.length > 0) {
+                lastAdTimeRef.current = currentTime;
+                video.pause();
+                setActiveAd(ads[Math.floor(Math.random() * ads.length)]);
+                setIsAdPlaying(true);
+              }
+            } finally {
+              midRollInFlightRef.current = false;
             }
           }
         };

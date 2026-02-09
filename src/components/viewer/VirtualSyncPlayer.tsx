@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { CLOUDFLARE_BASE_URL, APP_BRANDING } from '../../constants';
+import { ADMIN_TEST_DURATION_KEY, ADMIN_TEST_DURATION_SECONDS, CLOUDFLARE_BASE_URL, APP_BRANDING } from '../../constants';
 import VideoPlayer from './VideoPlayer';
 
 interface VirtualSyncPlayerProps {
@@ -28,6 +28,8 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
     const [nextSegmentTitle, setNextSegmentTitle] = useState("");
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [schedule, setSchedule] = useState<any[]>([]);
+    const [fallbackMode, setFallbackMode] = useState(false);
+    const [fallbackIndex, setFallbackIndex] = useState(0);
     const scheduleRef = useRef<any[]>([]);
     const countdownIntervalRef = useRef<any>(null);
     const syncIntervalRef = useRef<any>(null);
@@ -89,12 +91,17 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
                 // Channel is live, fetch schedule
                 let startTime = chan.live_started_at || chan.scheduled_start_time;
                 if (!startTime) {
-                    startTime = new Date().toISOString();
-                    // Best-effort: stamp a start time so all viewers can sync
-                    supabase.from('virtual_channels').upsert({
-                        id: chan.id,
-                        live_started_at: startTime
-                    }, { onConflict: 'id' }).then(() => { });
+                    const nowIso = new Date().toISOString();
+                    // Stamp a start time only if it's currently null to avoid per-viewer resets
+                    const { data: updated } = await supabase
+                        .from('virtual_channels')
+                        .update({ live_started_at: nowIso })
+                        .eq('id', chan.id)
+                        .is('live_started_at', null)
+                        .select('live_started_at')
+                        .maybeSingle();
+
+                    startTime = updated?.live_started_at || nowIso;
                 }
                 await fetchScheduleAndStart(startTime);
 
@@ -128,15 +135,47 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
                 setSchedule(scheduleData);
                 scheduleRef.current = scheduleData;
 
+                const totalDuration = scheduleData.reduce((acc, curr) => acc + getItemDuration(curr), 0);
+                if (totalDuration <= 0) {
+                    // Fallback sequential mode (no durations available)
+                    setFallbackMode(true);
+                    setFallbackIndex(0);
+                    const first = scheduleData[0];
+                    const firstUrl = resolveMediaUrl(first);
+                    if (!firstUrl) {
+                        setStatus('error');
+                        setErrorMessage('No signal: missing media URLs');
+                        return;
+                    }
+                    setCurrentSegment({
+                        url: firstUrl,
+                        poster: resolvePoster(first),
+                        title: first.media_library?.title || first.ads_library?.title || 'Unknown',
+                        isAd: !!first.ad_id,
+                        duration: 0,
+                        seekPosition: 0
+                    });
+                    setNextSegmentTitle(scheduleData[1]?.media_library?.title || scheduleData[1]?.ads_library?.title || '');
+                    setStatus('playing');
+                    return;
+                }
+
                 // Calculate playback state based on server-side start time
                 const playbackState = calculatePlaybackState(scheduleData, startTime);
+                if (!playbackState.segment.url) {
+                    setStatus('error');
+                    setErrorMessage('No signal: missing media URLs');
+                    return;
+                }
                 setCurrentSegment(playbackState.segment);
                 setNextSegmentTitle(playbackState.nextTitle);
                 setStatus('playing');
 
                 // Set up periodic sync check (every 5 seconds)
                 syncIntervalRef.current = setInterval(() => {
+                    if (fallbackMode) return;
                     const newState = calculatePlaybackState(scheduleData, startTime);
+                    if (!newState.segment.url) return;
                     if (newState.segment.url !== currentSegment?.url || newState.segment.seekPosition !== currentSegment?.seekPosition) {
                         setCurrentSegment(newState.segment);
                         setNextSegmentTitle(newState.nextTitle);
@@ -201,30 +240,40 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
         setCountdownText(`${hours}h ${mins}m ${secs}s`);
     };
 
+    const normalizeR2Url = (url: string): string => {
+        if (url.startsWith('http')) {
+            if (url.includes('.r2.dev/')) {
+                const [, path] = url.split('.r2.dev/');
+                return `${CLOUDFLARE_BASE_URL}${(path || '').replace(/^\/+/, '')}`;
+            }
+            return url;
+        }
+        return `${CLOUDFLARE_BASE_URL}${url.replace(/^\/+/, '')}`;
+    };
+
     const resolveMediaUrl = (item: any): string => {
         if (item.media_id && item.media_library?.stream_url) {
-            const url = item.media_library.stream_url;
-            if (url.startsWith('http')) return url;
-            return CLOUDFLARE_BASE_URL + url.replace(/^\/+/, '');
+            return normalizeR2Url(item.media_library.stream_url);
         }
         if (item.ad_id && item.ads_library?.ad_url) {
-            const url = item.ads_library.ad_url;
-            if (url.startsWith('http')) return url;
-            return CLOUDFLARE_BASE_URL + url.replace(/^\/+/, '');
+            return normalizeR2Url(item.ads_library.ad_url);
         }
         return '';
     };
 
     const resolvePoster = (item: any): string => {
         if (item.media_library?.cover_url) {
-            const url = item.media_library.cover_url;
-            if (url.startsWith('http')) return url;
-            return CLOUDFLARE_BASE_URL + url.replace(/^\/+/, '');
+            return normalizeR2Url(item.media_library.cover_url);
         }
         return '';
     };
 
+    const isTestDurationEnabled = (): boolean => {
+        return localStorage.getItem(ADMIN_TEST_DURATION_KEY) === 'true';
+    };
+
     const getItemDuration = (item: any): number => {
+        if (isTestDurationEnabled()) return ADMIN_TEST_DURATION_SECONDS;
         return item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
     };
 
@@ -293,6 +342,25 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
     const handleVideoEnded = useCallback(() => {
         if (scheduleRef.current.length === 0) return;
 
+        if (fallbackMode) {
+            const nextIndex = (fallbackIndex + 1) % scheduleRef.current.length;
+            const nextItem = scheduleRef.current[nextIndex];
+
+            setFallbackIndex(nextIndex);
+            setCurrentSegment({
+                url: resolveMediaUrl(nextItem),
+                poster: resolvePoster(nextItem),
+                title: nextItem.media_library?.title || nextItem.ads_library?.title || 'Unknown',
+                isAd: !!nextItem.ad_id,
+                duration: 0,
+                seekPosition: 0
+            });
+
+            const afterNext = (nextIndex + 1) % scheduleRef.current.length;
+            setNextSegmentTitle(scheduleRef.current[afterNext]?.media_library?.title || scheduleRef.current[afterNext]?.ads_library?.title || '');
+            return;
+        }
+
         // Get current index
         const currentIndex = scheduleRef.current.findIndex(item => {
             const url = resolveMediaUrl(item);
@@ -314,7 +382,7 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
         // Update "Up Next"
         const afterNext = (nextIndex + 1) % scheduleRef.current.length;
         setNextSegmentTitle(scheduleRef.current[afterNext]?.media_library?.title || scheduleRef.current[afterNext]?.ads_library?.title || '');
-    }, [currentSegment]);
+    }, [currentSegment, fallbackMode, fallbackIndex]);
 
     // Loading state
     if (status === 'loading') {
@@ -415,6 +483,9 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
                     <p className="text-[10px] font-black uppercase text-white truncate">{currentSegment.title}</p>
                     {nextSegmentTitle && (
                         <p className="text-[8px] text-slate-500 mt-1 truncate">Up Next: {nextSegmentTitle}</p>
+                    )}
+                    {fallbackMode && (
+                        <p className="text-[7px] text-orange-400 mt-1 uppercase tracking-widest">Fallback mode</p>
                     )}
                 </div>
             </div>
