@@ -84,7 +84,7 @@ def main():
     working_streams = []
     not_working_streams = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as executor:
+    with concurrent.futures.ThreadProfileExecutor(max_workers=args.max_workers) as executor:
         future_to_url = {executor.submit(check_stream, url): url for url in urls}
         for future in concurrent.futures.as_completed(future_to_url):
             url, status = future.result()

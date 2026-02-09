@@ -1,20 +1,58 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Kairo 4K | Autonomous Stream Nexus
 
-# Run and deploy your AI Studio app
+A premium 4K IPTV aggregator with intelligent signal processing and cinematic playback controls. Built with React, Vite, and Supabase.
 
-This contains everything you need to run your app locally.
+## 🚀 Vision
+Kairo 4K is designed to provide a high-end, futuristic streaming experience. It features "signal locking" aesthetics, real-time metrics, and a robust media management system.
 
-View your app in AI Studio: https://ai.studio/apps/drive/16_tXsSAgxxa8Gvj4279AoAw9jhZ0uxYO
+## 📁 Project Structure
 
-## Run Locally
+```text
+├── src/                # Core application source
+│   ├── components/     # UI components (Admin, Viewer, Frontend, Backend)
+│   ├── services/       # API & external service integrations
+│   ├── App.tsx         # Main application logic
+│   ├── constants.ts    # Application-wide constants & defaults
+│   ├── index.tsx       # Entry point
+│   ├── types.ts        # TypeScript definitions
+│   └── vite-env.d.ts   # Vite environment types
+├── docs/               # Manuals, setup guides, and project plans
+├── database/           # SQL schemas and database migration scripts
+├── playlists/          # M3U signal sources and validation lists
+├── scripts/            # Utility scripts (Python validators, seeders)
+├── supabase/           # Supabase edge functions and local config
+├── index.html          # Application shell
+├── vite.config.ts      # Vite build configuration
+└── tsconfig.json       # TypeScript configuration
+```
 
-**Prerequisites:**  Node.js
+## 🛠️ Tech Stack
+- **Frontend**: React 18, Tailwind CSS, HLS.js
+- **Backend**: Supabase (Auth, DB, Edge Functions)
+- **Deployment**: Vite, R2 Storage (Media)
 
+## 🔧 Getting Started
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Configure Environment**:
+   Create a `.env` file with:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_CLOUDFLARE_R2_URL`
+
+3. **Development**:
+   ```bash
+   npm run dev
+   ```
+
+4. **Build**:
+   ```bash
+   npm run build
+   ```
+
+## 📡 Signal Management
+Signals are processed via the `m3uParser` service and can be Proxied to avoid CORS issues. See `playlists/` for sample sources and `scripts/stream_validator.py` for health checks.
