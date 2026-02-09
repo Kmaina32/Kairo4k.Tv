@@ -31,6 +31,17 @@ const VirtualChannelManager = () => {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [manualDuration, setManualDuration] = useState<{ [key: string]: string }>({});
+    const [liveViewers, setLiveViewers] = useState<number>(0);
+    const [liveMetrics, setLiveMetrics] = useState<{
+        title: string;
+        isAd: boolean;
+        segmentElapsed: number;
+        segmentRemaining: number;
+        segmentDuration: number;
+        loopElapsed: number;
+        loopDuration: number;
+        index: number;
+    } | null>(null);
 
     useEffect(() => {
         fetchData();
@@ -40,6 +51,24 @@ const VirtualChannelManager = () => {
         if (selectedChannel) {
             fetchSchedule(selectedChannel.id);
         }
+    }, [selectedChannel?.id]);
+
+    useEffect(() => {
+        if (!selectedChannel?.id) return;
+        const channel = supabase.channel(`live-viewers:${selectedChannel.id}`, {
+            config: { presence: { key: `admin_${selectedChannel.id}` } }
+        });
+
+        channel.on('presence', { event: 'sync' }, () => {
+            const state = channel.presenceState();
+            setLiveViewers(Object.keys(state).length);
+        });
+
+        channel.subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [selectedChannel?.id]);
 
     const fetchData = async () => {
@@ -58,7 +87,13 @@ const VirtualChannelManager = () => {
             .select('*, media_library(title, duration, cover_url, stream_url, category), ads_library(title, duration, ad_url)')
             .eq('channel_id', channelId)
             .order('order_index', { ascending: true });
-        if (data) setSchedule(data);
+        if (data) {
+            await autofillScheduleDurations(data);
+            setSchedule(data.map(item => {
+                const resolved = item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
+                return { ...item, duration: resolved };
+            }));
+        }
     };
 
     const handleCreateChannel = async (e: any) => {
@@ -325,6 +360,87 @@ const VirtualChannelManager = () => {
         if (m > 0) return `${m}m ${s}s`;
         return `${s}s`;
     };
+
+    const getItemDuration = (item: ScheduleItem) => {
+        return item.duration || item.media_library?.duration || item.ads_library?.duration || 0;
+    };
+
+    const autofillScheduleDurations = async (items: ScheduleItem[]) => {
+        const updates = items
+            .filter(item => (!item.duration || item.duration <= 0))
+            .map(item => {
+                const resolved = item.media_library?.duration || item.ads_library?.duration || 0;
+                if (resolved > 0) {
+                    return { id: item.id, duration: resolved };
+                }
+                return null;
+            })
+            .filter(Boolean) as { id: string; duration: number }[];
+
+        if (updates.length > 0) {
+            await supabase.from('channel_schedule').upsert(updates, { onConflict: 'id' });
+        }
+    };
+
+    const computeLiveMetrics = () => {
+        if (!selectedChannel?.is_active || schedule.length === 0) {
+            setLiveMetrics(null);
+            return;
+        }
+
+        const startTime = selectedChannel.live_started_at || selectedChannel.scheduled_start_time;
+        if (!startTime) {
+            setLiveMetrics(null);
+            return;
+        }
+
+        const startMs = new Date(startTime).getTime();
+        if (Number.isNaN(startMs)) {
+            setLiveMetrics(null);
+            return;
+        }
+
+        const loopDuration = schedule.reduce((acc, item) => acc + getItemDuration(item), 0);
+        if (loopDuration <= 0) {
+            setLiveMetrics(null);
+            return;
+        }
+
+        const elapsedSeconds = Math.floor((Date.now() - startMs) / 1000);
+        const loopElapsed = ((elapsedSeconds % loopDuration) + loopDuration) % loopDuration;
+
+        let cumulative = 0;
+        for (let i = 0; i < schedule.length; i++) {
+            const item = schedule[i];
+            const duration = getItemDuration(item);
+            if (loopElapsed >= cumulative && loopElapsed < cumulative + duration) {
+                const segmentElapsed = loopElapsed - cumulative;
+                const segmentRemaining = Math.max(duration - segmentElapsed, 0);
+                const title = item.media_library?.title || item.ads_library?.title || 'Unknown';
+                const isAd = !!item.ad_id;
+                setLiveMetrics({
+                    title,
+                    isAd,
+                    segmentElapsed,
+                    segmentRemaining,
+                    segmentDuration: duration,
+                    loopElapsed,
+                    loopDuration,
+                    index: i
+                });
+                return;
+            }
+            cumulative += duration;
+        }
+
+        setLiveMetrics(null);
+    };
+
+    useEffect(() => {
+        computeLiveMetrics();
+        const t = setInterval(computeLiveMetrics, 1000);
+        return () => clearInterval(t);
+    }, [selectedChannel?.id, selectedChannel?.is_active, selectedChannel?.live_started_at, selectedChannel?.scheduled_start_time, schedule]);
 
     const getScheduleTimeline = () => {
         let cumulative = 0;
@@ -677,25 +793,63 @@ const VirtualChannelManager = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 {/* Stats */}
                                 <div className="space-y-4">
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                            <span className="text-lg font-black text-white">{formatDuration(totalDuration)}</span>
-                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Total Loop</p>
-                                        </div>
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                            <span className="text-lg font-black text-purple-400">{mediaCount}</span>
-                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Media</p>
-                                        </div>
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                            <span className="text-lg font-black text-orange-400">{adCount}</span>
-                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Ads</p>
-                                        </div>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
+                                        <span className="text-lg font-black text-white">{formatDuration(totalDuration)}</span>
+                                        <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Total Loop</p>
                                     </div>
+                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
+                                        <span className="text-lg font-black text-purple-400">{mediaCount}</span>
+                                        <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Media</p>
+                                    </div>
+                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
+                                        <span className="text-lg font-black text-orange-400">{adCount}</span>
+                                        <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Ads</p>
+                                    </div>
+                                </div>
 
+                                <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-3 h-3 rounded-full ${selectedChannel.is_active ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse' : 'bg-red-400'}`} />
-                                            <span className={`text-sm font-black uppercase tracking-widest ${selectedChannel.is_active ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        <p className="text-[8px] font-black uppercase text-slate-600">Live Viewers</p>
+                                        <span className="text-2xl font-black text-emerald-400">{liveViewers}</span>
+                                    </div>
+                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                                        <p className="text-[8px] font-black uppercase text-slate-600">Current Segment</p>
+                                        {liveMetrics ? (
+                                            <div className="mt-1">
+                                                <span className="text-[10px] font-black uppercase text-white block truncate">{liveMetrics.title}</span>
+                                                <span className={`text-[8px] font-black uppercase ${liveMetrics.isAd ? 'text-orange-400' : 'text-purple-400'}`}>
+                                                    {liveMetrics.isAd ? 'AD' : 'MEDIA'} â€¢ #{liveMetrics.index + 1}
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-[9px] text-slate-500">No signal</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                                    <p className="text-[8px] font-black uppercase text-slate-600">Segment Time</p>
+                                    {liveMetrics ? (
+                                        <div className="flex items-center justify-between mt-2">
+                                            <span className="text-[10px] font-mono text-white">{formatDuration(liveMetrics.segmentElapsed)}</span>
+                                            <div className="flex-1 mx-3 h-1 bg-white/10 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-purple-500"
+                                                    style={{ width: `${Math.min((liveMetrics.segmentElapsed / Math.max(liveMetrics.segmentDuration, 1)) * 100, 100)}%` }}
+                                                />
+                                            </div>
+                                            <span className="text-[10px] font-mono text-slate-400">-{formatDuration(liveMetrics.segmentRemaining)}</span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[9px] text-slate-500">Awaiting live signal</span>
+                                    )}
+                                </div>
+
+                                <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-3 h-3 rounded-full ${selectedChannel.is_active ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse' : 'bg-red-400'}`} />
+                                        <span className={`text-sm font-black uppercase tracking-widest ${selectedChannel.is_active ? 'text-emerald-400' : 'text-red-400'}`}>
                                                 {selectedChannel.is_active
                                                     ? selectedChannel.scheduled_start_time
                                                         ? 'SCHEDULED'
@@ -731,6 +885,30 @@ const VirtualChannelManager = () => {
                                             }}
                                             className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] text-white focus:outline-none focus:border-purple-500 font-mono"
                                         />
+                                    </div>
+
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => selectedChannel && fetchSchedule(selectedChannel.id)}
+                                            className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-slate-300 transition-all"
+                                        >
+                                            Refresh Schedule
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                if (!selectedChannel) return;
+                                                const now = new Date().toISOString();
+                                                await supabase.from('virtual_channels').upsert({
+                                                    id: selectedChannel.id,
+                                                    live_started_at: now,
+                                                    is_active: true
+                                                }, { onConflict: 'id' });
+                                                fetchData();
+                                            }}
+                                            className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white transition-all"
+                                        >
+                                            Resync Start
+                                        </button>
                                     </div>
 
                                     <div className="flex gap-3">

@@ -31,6 +31,15 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
     const scheduleRef = useRef<any[]>([]);
     const countdownIntervalRef = useRef<any>(null);
     const syncIntervalRef = useRef<any>(null);
+    const presenceChannelRef = useRef<any>(null);
+    const viewerIdRef = useRef<string>('');
+
+    if (!viewerIdRef.current) {
+        const existing = localStorage.getItem('nexus_viewer_id');
+        const id = existing || (crypto?.randomUUID?.() ?? `viewer_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+        viewerIdRef.current = id;
+        if (!existing) localStorage.setItem('nexus_viewer_id', id);
+    }
 
     // Fetch initial channel and schedule data
     useEffect(() => {
@@ -78,7 +87,16 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
                 }
 
                 // Channel is live, fetch schedule
-                await fetchScheduleAndStart(chan.live_started_at || chan.scheduled_start_time);
+                let startTime = chan.live_started_at || chan.scheduled_start_time;
+                if (!startTime) {
+                    startTime = new Date().toISOString();
+                    // Best-effort: stamp a start time so all viewers can sync
+                    supabase.from('virtual_channels').upsert({
+                        id: chan.id,
+                        live_started_at: startTime
+                    }, { onConflict: 'id' }).then(() => { });
+                }
+                await fetchScheduleAndStart(startTime);
 
             } catch (err: any) {
                 console.error('Error fetching channel:', err);
@@ -143,6 +161,34 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
         };
     }, [channelId]);
 
+    // Presence tracking for live viewer count
+    useEffect(() => {
+        if (status !== 'playing') {
+            if (presenceChannelRef.current) {
+                supabase.removeChannel(presenceChannelRef.current);
+                presenceChannelRef.current = null;
+            }
+            return;
+        }
+
+        const channel = supabase.channel(`live-viewers:${channelId}`, {
+            config: { presence: { key: viewerIdRef.current } }
+        });
+
+        channel.subscribe((state) => {
+            if (state === 'SUBSCRIBED') {
+                channel.track({ online_at: new Date().toISOString() });
+            }
+        });
+
+        presenceChannelRef.current = channel;
+
+        return () => {
+            supabase.removeChannel(channel);
+            presenceChannelRef.current = null;
+        };
+    }, [channelId, status]);
+
     const updateCountdown = (startTime: number) => {
         const diff = startTime - Date.now();
         if (diff <= 0) {
@@ -185,6 +231,12 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
     // Calculate playback state based on start time
     const calculatePlaybackState = (scheduleData: any[], startTime: string): { segment: ScheduleSegment; nextTitle: string } => {
         const startMs = new Date(startTime).getTime();
+        if (Number.isNaN(startMs)) {
+            return {
+                segment: { url: '', poster: '', title: 'Invalid Start Time', isAd: false, duration: 0, seekPosition: 0 },
+                nextTitle: ''
+            };
+        }
         const elapsedMs = Date.now() - startMs;
         const elapsedSeconds = Math.floor(elapsedMs / 1000);
 
@@ -287,17 +339,17 @@ const VirtualSyncPlayer = ({ channelId, channelName, isTheater, onToggleTheater 
             >
                 <div className="absolute inset-0 bg-black/60 pointer-events-none" />
                 <div className="relative z-10 text-center">
-                    <div className="w-24 h-24 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin mx-auto mb-8 shadow-[0_0_50px_rgba(168,85,247,0.2)]" />
-                    <h2 className="text-4xl font-black uppercase tracking-[0.3em] text-white mb-4 kairo-cyber-glow">Coming Live</h2>
-                    <p className="text-sm font-black uppercase tracking-[0.5em] text-purple-500 mb-12">{channelName}</p>
+                    <div className="w-16 h-16 md:w-24 md:h-24 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin mx-auto mb-6 md:mb-8 shadow-[0_0_50px_rgba(168,85,247,0.2)]" />
+                    <h2 className="text-2xl md:text-4xl font-black uppercase tracking-[0.2em] md:tracking-[0.3em] text-white mb-3 md:mb-4 kairo-cyber-glow">Coming Live</h2>
+                    <p className="text-[10px] md:text-sm font-black uppercase tracking-[0.3em] md:tracking-[0.5em] text-purple-500 mb-8 md:mb-12">{channelName}</p>
                     <div className="flex gap-4 justify-center">
-                        <div className="bg-white/5 border border-white/10 px-8 py-6 rounded-3xl backdrop-blur-xl">
-                            <span className="text-5xl font-mono font-black text-white tracking-tighter">{countdownText}</span>
+                        <div className="bg-white/5 border border-white/10 px-4 py-4 md:px-8 md:py-6 rounded-3xl backdrop-blur-xl">
+                            <span className="text-2xl md:text-5xl font-mono font-black text-white tracking-tighter">{countdownText}</span>
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-2">Time Remaining</p>
                         </div>
                     </div>
                 </div>
-                <div className="absolute bottom-12 text-[10px] font-black uppercase tracking-[0.5em] text-slate-400 animate-pulse">{APP_BRANDING.name} Broadcast</div>
+                <div className="absolute bottom-6 md:bottom-12 text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] md:tracking-[0.5em] text-slate-400 animate-pulse">{APP_BRANDING.name} Broadcast</div>
             </div>
         );
     }
