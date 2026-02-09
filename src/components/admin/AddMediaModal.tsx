@@ -56,11 +56,10 @@ const MediaModal = ({ onClose, onSuccess, initialData, parentId }: MediaModalPro
 
         try {
             if (initialData?.id) {
-                // Update
+                // Update via upsert (uses POST to avoid CORS PATCH restriction)
                 const { error: updateError } = await supabase
                     .from('media_library')
-                    .update(payload)
-                    .eq('id', initialData.id);
+                    .upsert({ id: initialData.id, ...payload }, { onConflict: 'id' });
                 if (updateError) throw updateError;
             } else {
                 // Insert

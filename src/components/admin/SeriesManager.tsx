@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { r2Service } from '../../services/r2Service';
 import { supabase } from '../../services/supabaseClient';
 import { CLOUDFLARE_BASE_URL } from '../../constants';
+import BrandedDialog from '../frontend/BrandedDialog';
 
 interface MediaItem {
     id: string;
@@ -52,6 +53,32 @@ const SeriesManager = ({ onClose, onRefresh }: SeriesManagerProps) => {
     const videoInputRef = useRef<HTMLInputElement>(null);
     const coverInputRef = useRef<HTMLInputElement>(null);
 
+    const [dialog, setDialog] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'info' | 'danger';
+        onConfirm: () => void;
+        hideCancel?: boolean;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        type: 'info',
+        onConfirm: () => { },
+    });
+
+    const showDialog = (title: string, message: string, onConfirm?: () => void, type: 'info' | 'danger' = 'info', hideCancel = false) => {
+        setDialog({
+            isOpen: true,
+            title,
+            message,
+            onConfirm: onConfirm || (() => setDialog(d => ({ ...d, isOpen: false }))),
+            type,
+            hideCancel
+        });
+    };
+
     useEffect(() => {
         fetchSeries();
     }, []);
@@ -90,7 +117,7 @@ const SeriesManager = ({ onClose, onRefresh }: SeriesManagerProps) => {
 
     const handleAddEpisode = async () => {
         if (!selectedSeries || !videoFile || !episodeForm.title) {
-            alert('Please fill in all required fields and select a video');
+            showDialog('Missing Info', 'Please fill in all required fields and select a video', undefined, 'info', true);
             return;
         }
 
@@ -135,14 +162,16 @@ const SeriesManager = ({ onClose, onRefresh }: SeriesManagerProps) => {
 
             if (error) throw error;
 
-            alert('Episode added successfully!');
-            resetEpisodeForm();
-            fetchEpisodes(selectedSeries.id);
-            setActiveTab('list');
-            onRefresh();
+            showDialog('Success', 'Episode added successfully!', () => {
+                setDialog(d => ({ ...d, isOpen: false }));
+                resetEpisodeForm();
+                fetchEpisodes(selectedSeries.id);
+                setActiveTab('list');
+                onRefresh();
+            }, 'info', true);
         } catch (error: any) {
             console.error('Upload error:', error);
-            alert(`Upload failed: ${error.message}`);
+            showDialog('Error', `Upload failed: ${error.message}`, undefined, 'danger', true);
         } finally {
             setIsUploading(false);
         }
@@ -182,8 +211,7 @@ const SeriesManager = ({ onClose, onRefresh }: SeriesManagerProps) => {
 
             const { error } = await supabase
                 .from('media_library')
-                .update(updateData)
-                .eq('id', editingEpisode.id);
+                .upsert({ id: editingEpisode.id, ...updateData }, { onConflict: 'id' });
 
             if (error) throw error;
 
@@ -202,26 +230,31 @@ const SeriesManager = ({ onClose, onRefresh }: SeriesManagerProps) => {
     };
 
     const handleDeleteEpisode = async (episode: MediaItem) => {
-        if (!confirm(`Delete "${episode.title}"? This cannot be undone.`)) return;
+        showDialog(
+            'Confirm Deletion',
+            `Are you sure you want to delete "${episode.title}"? This cannot be undone.`,
+            async () => {
+                const { error } = await supabase
+                    .from('media_library')
+                    .delete()
+                    .eq('id', episode.id);
 
-        const { error } = await supabase
-            .from('media_library')
-            .delete()
-            .eq('id', episode.id);
-
-        if (error) {
-            alert(`Delete failed: ${error.message}`);
-        } else {
-            if (selectedSeries) fetchEpisodes(selectedSeries.id);
-            onRefresh();
-        }
+                if (error) {
+                    showDialog('Error', `Delete failed: ${error.message}`, undefined, 'danger', true);
+                } else {
+                    if (selectedSeries) fetchEpisodes(selectedSeries.id);
+                    onRefresh();
+                    setDialog(d => ({ ...d, isOpen: false }));
+                }
+            },
+            'danger'
+        );
     };
 
     const handleToggleActive = async (episode: MediaItem) => {
         const { error } = await supabase
             .from('media_library')
-            .update({ is_active: !episode.is_active })
-            .eq('id', episode.id);
+            .upsert({ id: episode.id, is_active: !episode.is_active }, { onConflict: 'id' });
 
         if (!error && selectedSeries) {
             fetchEpisodes(selectedSeries.id);
@@ -601,6 +634,16 @@ const SeriesManager = ({ onClose, onRefresh }: SeriesManagerProps) => {
                     </div>
                 )}
             </div>
+
+            <BrandedDialog
+                isOpen={dialog.isOpen}
+                title={dialog.title}
+                message={dialog.message}
+                type={dialog.type}
+                hideCancel={dialog.hideCancel}
+                onConfirm={dialog.onConfirm}
+                onCancel={() => setDialog(d => ({ ...d, isOpen: false }))}
+            />
         </div>
     );
 };

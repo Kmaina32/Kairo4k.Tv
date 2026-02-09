@@ -27,8 +27,7 @@ const AdManager = () => {
     const handleToggleConfig = async (config: any) => {
         const { error } = await supabase
             .from('ads_config')
-            .update({ is_enabled: !config.is_enabled })
-            .eq('id', config.id);
+            .upsert({ id: config.id, is_enabled: !config.is_enabled }, { onConflict: 'id' });
         if (!error) fetchAdData();
     };
 

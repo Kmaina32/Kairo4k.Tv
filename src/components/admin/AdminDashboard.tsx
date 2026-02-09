@@ -12,6 +12,9 @@ import CommandDeck from './CommandDeck';
 import AdManager from './AdManager';
 import VirtualChannelManager from './VirtualChannelManager';
 import SeriesManager from './SeriesManager';
+import RemoteDownloader from './RemoteDownloader';
+import BrandLogo from '../frontend/BrandLogo';
+import BrandedDialog from '../frontend/BrandedDialog';
 
 interface AdminDashboardProps {
     stats: CloudStats | null;
@@ -23,7 +26,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     const [isAuditing, setIsAuditing] = useState(false);
 
     // Persist admin view in localStorage
-    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'ads' | 'broadcast'>(() => {
+    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'ads' | 'broadcast' | 'downloader'>(() => {
         const saved = localStorage.getItem('nexus_admin_view');
         return (saved as any) || 'overview';
     });
@@ -49,6 +52,32 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     const [mediaModalState, setMediaModalState] = useState<{ open: boolean, initialData?: any, parentId?: string }>({ open: false });
     const [episodeManagerSeries, setEpisodeManagerSeries] = useState<any | null>(null);
     const [showSeriesManager, setShowSeriesManager] = useState(false);
+
+    const [dialog, setDialog] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'info' | 'danger';
+        onConfirm: () => void;
+        hideCancel?: boolean;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        type: 'info',
+        onConfirm: () => { },
+    });
+
+    const showDialog = (title: string, message: string, onConfirm?: () => void, type: 'info' | 'danger' = 'info', hideCancel = false) => {
+        setDialog({
+            isOpen: true,
+            title,
+            message,
+            onConfirm: onConfirm || (() => setDialog(d => ({ ...d, isOpen: false }))),
+            type,
+            hideCancel
+        });
+    };
 
     useEffect(() => {
         if (adminView === 'users') fetchUsers();
@@ -89,39 +118,52 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         try {
             const { error } = await supabase
                 .from('media_library')
-                .update({ is_active: !item.is_active })
-                .eq('id', item.id);
+                .upsert({ id: item.id, is_active: !item.is_active }, { onConflict: 'id' });
             if (error) throw error;
             fetchMediaLibrary();
         } catch (err) {
             console.error(err);
-            alert('Failed to update status');
+            showDialog('Error', 'Failed to update status', undefined, 'danger', true);
         }
     };
 
     const handleDeletePlaylist = async (id: string, name: string) => {
-        if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) return;
-        try {
-            const { error } = await supabase.from('playlists').delete().eq('id', id);
-            if (error) throw error;
-            await cloudService.logEvent(user?.username || 'Unknown', `Deleted playlist source: ${name}`);
-            fetchPlaylists();
-        } catch (err) {
-            console.error('Error deleting playlist:', err);
-            alert('Failed to delete playlist');
-        }
+        showDialog(
+            'Confirm Deletion',
+            `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+            async () => {
+                try {
+                    const { error } = await supabase.from('playlists').delete().eq('id', id);
+                    if (error) throw error;
+                    await cloudService.logEvent(user?.username || 'Unknown', `Deleted playlist source: ${name}`);
+                    fetchPlaylists();
+                    setDialog(d => ({ ...d, isOpen: false }));
+                } catch (err) {
+                    console.error('Error deleting playlist:', err);
+                    showDialog('Error', 'Failed to delete playlist', undefined, 'danger', true);
+                }
+            },
+            'danger'
+        );
     };
 
     const handleDeleteMedia = async (id: string, title: string) => {
-        if (!confirm(`Delete "${title}" and all its episodes?`)) return;
-        try {
-            const { error } = await supabase.from('media_library').delete().eq('id', id);
-            if (error) throw error;
-            fetchMediaLibrary();
-        } catch (err) {
-            console.error(err);
-            alert('Failed to delete media');
-        }
+        showDialog(
+            'Confirm Deletion',
+            `Delete "${title}" and all its episodes?`,
+            async () => {
+                try {
+                    const { error } = await supabase.from('media_library').delete().eq('id', id);
+                    if (error) throw error;
+                    fetchMediaLibrary();
+                    setDialog(d => ({ ...d, isOpen: false }));
+                } catch (err) {
+                    console.error(err);
+                    showDialog('Error', 'Failed to delete media', undefined, 'danger', true);
+                }
+            },
+            'danger'
+        );
     };
 
     const handleRunAudit = async () => {
@@ -139,7 +181,17 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         { id: 'analytics' as const, label: 'R2 Analytics', icon: <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /> },
         { id: 'ads' as const, label: 'Ad Manager', icon: <path d="M11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882ZM11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882Z" /> },
         { id: 'broadcast' as const, label: 'Virtual Channels', icon: <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.121l6.811-6.81z" /> },
+        { id: 'downloader' as const, label: 'Remote Downloader', icon: <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> },
     ];
+
+    const categoryIcons: Record<string, React.ReactNode> = {
+        'All': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />,
+        'Movie': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 002 2z" />,
+        'Series': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />,
+        'Fallen': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />, // Lightning bolt for Fallen/Action? Or maybe swords: M6 18L18 6M6 6l12 12 (X) - Let's use crossed swords if possible, but for now lightning
+        'Documentary': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />,
+        'Music': <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+    };
 
     const statsCards = [
         { label: 'Active Signals', value: '117', trend: '+12%', color: 'text-emerald-400' },
@@ -152,14 +204,10 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         <div className="fixed inset-0 z-50 flex h-screen bg-[#020617] text-white overflow-hidden font-mono">
             {/* ADMIN SIDEBAR - DESKTOP ONLY */}
             <aside className="hidden lg:flex w-72 bg-black/40 border-r border-white/5 flex-col p-6 backdrop-blur-xl z-20">
-                <div className="flex items-center gap-3 mb-10 px-2">
-                    <div className="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/20">
-                        <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
-                    </div>
-                    <div>
-                        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">Kairo 4k Admin</h2>
-                        <span className="text-[8px] font-mono text-orange-500/60 uppercase tracking-widest">Level 5 Access</span>
-                    </div>
+                <div className="px-6 py-4 rounded-2xl bg-orange-500/5 border border-orange-500/10 mb-10 flex items-center justify-between backdrop-blur-md group">
+                    <BrandLogo size="sm" />
+                    <div className="h-4 w-px bg-white/10" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">Admin</span>
                 </div>
 
                 <nav className="flex-1 space-y-2">
@@ -252,14 +300,18 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                                 </div>
                             </div>
 
+
                             {/* FILTERS & SEARCH */}
                             <div className="flex flex-wrap items-center gap-4 bg-white/5 p-2 rounded-2xl border border-white/5">
-                                {['All', 'Movie', 'Series', 'Fallen', 'Documentary', 'Music'].map(cat => (
+                                {(['All', 'Movie', 'Series', 'Fallen', 'Documentary', 'Music'] as const).map(cat => (
                                     <button
                                         key={cat}
                                         onClick={() => setMediaCategory(cat as any)}
-                                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${mediaCategory === cat ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
+                                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${mediaCategory === cat ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
                                     >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            {categoryIcons[cat]}
+                                        </svg>
                                         {cat}
                                     </button>
                                 ))}
@@ -417,6 +469,8 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     {adminView === 'ads' && <AdManager />}
 
                     {adminView === 'broadcast' && <VirtualChannelManager />}
+
+                    {adminView === 'downloader' && <RemoteDownloader />}
                 </div>
             </main>
 
@@ -476,6 +530,16 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     onRefresh={fetchMediaLibrary}
                 />
             )}
+
+            <BrandedDialog
+                isOpen={dialog.isOpen}
+                title={dialog.title}
+                message={dialog.message}
+                type={dialog.type}
+                hideCancel={dialog.hideCancel}
+                onConfirm={dialog.onConfirm}
+                onCancel={() => setDialog(d => ({ ...d, isOpen: false }))}
+            />
         </div>
     );
 };

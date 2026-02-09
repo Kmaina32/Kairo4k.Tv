@@ -21,7 +21,7 @@ const BrandLogo = ({ size = 'md', className = '' }: BrandLogoProps) => {
       <span className={`${sizeClasses[size]} kairo-shimmer`}>
         Kairo
       </span>
-      <span className={`${sizeClasses[size]} text-indigo-500 kairo-glow`}>
+      <span className={`${sizeClasses[size]} text-orange-500 kairo-glow`}>
         4K
       </span>
     </div>

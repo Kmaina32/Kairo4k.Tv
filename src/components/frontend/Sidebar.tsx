@@ -20,7 +20,7 @@ const Sidebar = ({ activeView, onViewChange, isOpen }: SidebarProps) => {
     },
     {
       id: 'favorites',
-      label: 'Priority Profile',
+      label: 'Favorites Profile',
       icon: (
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -53,7 +53,7 @@ const Sidebar = ({ activeView, onViewChange, isOpen }: SidebarProps) => {
               className={`
                 w-12 h-12 flex items-center justify-center rounded-2xl transition-all duration-300
                 ${activeView === item.id
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                  ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/30'
                   : 'text-slate-600 hover:text-slate-200 hover:bg-white/5'}
               `}
             >

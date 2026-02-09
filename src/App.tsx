@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Channel, ProxyStatus, UserProfile, CloudStats, AppView } from './types';
-import { DEFAULT_PLAYLISTS, PROXY_OPTIONS, NASA_CHANNELS, CACHE_TTL } from './constants';
+import { DEFAULT_PLAYLISTS, PROXY_OPTIONS, VIRTUAL_CHANNELS, CACHE_TTL } from './constants';
 import { parseM3U } from './services/m3uParser';
 import { cloudService } from './services/cloudService';
 
@@ -28,7 +28,7 @@ const CHANNELS_PER_PAGE = 60;
 
 const App = () => {
   // Shared State
-  const [channels, setChannels] = useState<Channel[]>(NASA_CHANNELS);
+  const [channels, setChannels] = useState<Channel[]>(VIRTUAL_CHANNELS);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(() => {
     const saved = localStorage.getItem('nexus_selected_channel');
     return saved ? JSON.parse(saved) : null;
@@ -130,7 +130,7 @@ const App = () => {
             id: vc.id,
             name: vc.name,
             group: 'Kairo Originals',
-            logo: vc.logo_url || 'https://www.nasa.gov/wp-content/themes/nasa/assets/images/nasa-logo.svg',
+            logo: vc.logo_url || 'https://your-logo-url.com/logo.png', // Replace with your app logo
             url: 'virtual://' + vc.id, // Special protocol for virtual channels
             source: 'KAIRO ORIGINALS'
           }));
@@ -365,7 +365,7 @@ const App = () => {
         />
 
         {/* Expandable Sidebar */}
-        <aside className={`z-20 flex flex-col bg-black/50 backdrop-blur-md border-r border-white/5 transition-all duration-300 ease-in-out ${sidebarOpen && activeView !== 'admin' ? 'w-96' : 'w-0'} overflow-hidden`}>
+        <aside className={`z-20 flex flex-col bg-black/50 backdrop-blur-md border-r border-white/5 transition-all duration-300 ease-in-out ${sidebarOpen && activeView !== 'admin' ? 'w-96' : 'w-0'} overflow-hidden relative`}>
           {(sidebarOpen && activeView !== 'admin') && (
             isVodView ? (
               <div className="flex-1 flex flex-col p-8 pt-12" style={{ minWidth: '24rem' }}>
@@ -432,7 +432,7 @@ const App = () => {
               <>
                 <div className="p-6 border-b border-white/5" style={{ minWidth: '24rem' }}>
                   <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-[12px] font-black uppercase tracking-[0.3em] text-white">Sector Map</h2>
+                    <h2 className="text-[12px] font-black uppercase tracking-[0.3em] text-white">Live Channels</h2>
                     <button onClick={() => setSidebarOpen(false)} className="text-white/40 hover:text-white">
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
@@ -456,7 +456,7 @@ const App = () => {
                     )}
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar" style={{ minWidth: '24rem' }}>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ minWidth: '24rem' }}>
                   {filteredChannels.length > 0 ? filteredChannels.map(ch => (
                     <button
                       key={ch.id}
@@ -486,6 +486,25 @@ const App = () => {
             )
           )}
         </aside>
+
+        {/* Desktop Sidebar Trigger */}
+        {!sidebarOpen && activeView !== 'admin' && (
+          <div className="absolute left-0 top-0 bottom-0 z-30 flex items-center w-4 group">
+            {/* Hit area */}
+            <div className="absolute inset-0 bg-transparent" />
+
+            {/* Visible Trigger */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="absolute left-0 p-3 bg-white/5 hover:bg-orange-600 text-slate-400 hover:text-white rounded-r-2xl border-y border-r border-white/10 hover:border-orange-500 backdrop-blur-md transition-all duration-300 -translate-x-2 group-hover:translate-x-0 shadow-2xl"
+              title="Open Sidebar"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" transform="rotate(180 12 12)" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col relative">
@@ -580,7 +599,7 @@ const App = () => {
             )}
 
             {activeView === 'live' && (
-              <div className="flex-1 relative p-4 flex flex-col gap-6 overflow-y-auto no-scrollbar">
+              <div className="flex-1 relative p-4 flex flex-col gap-6 overflow-y-auto">
                 {selectedChannel ? (
                   <>
                     <div className="w-full aspect-video relative rounded-[2rem] overflow-hidden shadow-2xl border border-white/10 bg-black group shrink-0">

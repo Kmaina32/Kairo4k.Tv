@@ -47,8 +47,7 @@ const AddPlaylistModal = ({ onClose, onSuccess, initialData }: AddPlaylistModalP
                 // UPDATE
                 const { error: updateError } = await supabase
                     .from('playlists')
-                    .update({ name, url, type })
-                    .eq('id', initialData.id);
+                    .upsert({ id: initialData.id, name, url, type }, { onConflict: 'id' });
 
                 if (updateError) throw updateError;
             } else {

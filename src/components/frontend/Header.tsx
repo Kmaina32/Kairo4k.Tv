@@ -44,22 +44,25 @@ const Header = ({
                     </svg>
                 </button>
 
-                <div className="cursor-pointer" onClick={() => onViewChange('live')}>
-                    <BrandLogo size="md" />
+                <div
+                    className="cursor-pointer px-4 py-2 rounded-2xl bg-orange-500/5 border border-orange-500/10 hover:bg-orange-500/10 transition-all flex items-center justify-center backdrop-blur-md group"
+                    onClick={() => onViewChange('live')}
+                >
+                    <BrandLogo size="sm" className="group-hover:scale-105 transition-transform" />
                 </div>
 
                 <nav className="hidden lg:flex items-center gap-1 ml-4">
                     {[
                         { id: 'live', label: 'Live' },
                         { id: 'movies', label: 'Theater' },
-                        { id: 'favorites', label: 'Priority' }
+                        { id: 'favorites', label: 'Favorites' }
                     ].map((item) => (
                         <button
                             key={item.id}
                             onClick={() => onViewChange(item.id as AppView)}
                             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeView === item.id
-                                    ? 'text-indigo-500 bg-indigo-500/5'
-                                    : 'text-slate-500 hover:text-white hover:bg-white/5'
+                                ? 'text-orange-500 bg-orange-500/10 border border-orange-500/20'
+                                : 'text-slate-500 hover:text-white hover:bg-white/5'
                                 }`}
                         >
                             {item.label}

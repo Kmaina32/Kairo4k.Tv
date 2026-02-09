@@ -1,5 +1,6 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, DeleteObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Upload } from '@aws-sdk/lib-storage';
 
 // Cloudflare R2 Configuration
 const R2_ACCOUNT_ID = import.meta.env.VITE_CF_ACCOUNT_ID || '';
@@ -44,7 +45,7 @@ export interface R2Object {
 
 class CloudflareR2Service {
     /**
-     * Upload a file to R2
+     * Upload a file to R2 with real progress
      */
     async uploadFile(
         file: File,
@@ -52,36 +53,32 @@ class CloudflareR2Service {
         onProgress?: (progress: UploadProgress) => void
     ): Promise<string> {
         try {
-            const buffer = await file.arrayBuffer();
             const key = `${path}/${Date.now()}_${file.name}`;
 
-            const command = new PutObjectCommand({
-                Bucket: R2_BUCKET_NAME,
-                Key: key,
-                Body: new Uint8Array(buffer),
-                ContentType: file.type,
+            const upload = new Upload({
+                client: r2Client,
+                params: {
+                    Bucket: R2_BUCKET_NAME,
+                    Key: key,
+                    Body: file,
+                    ContentType: file.type,
+                },
+                queueSize: 4,
+                partSize: 1024 * 1024 * 5, // 5MB parts
+                leavePartsOnError: false,
             });
 
-            await r2Client.send(command);
-
-            // Simulate progress for UX
-            if (onProgress) {
-                const total = file.size;
-                let loaded = 0;
-                const interval = setInterval(() => {
-                    loaded += total / 10;
-                    if (loaded >= total) {
-                        loaded = total;
-                        clearInterval(interval);
-                    }
+            upload.on('httpUploadProgress', (progress) => {
+                if (onProgress && progress.loaded && progress.total) {
                     onProgress({
-                        loaded,
-                        total,
-                        percentage: Math.round((loaded / total) * 100),
+                        loaded: progress.loaded,
+                        total: progress.total,
+                        percentage: Math.round((progress.loaded / progress.total) * 100),
                     });
-                }, 100);
-            }
+                }
+            });
 
+            await upload.done();
             return `${PUBLIC_URL}/${key}`;
         } catch (error) {
             console.error('R2 Upload Error:', error);
@@ -207,17 +204,14 @@ class CloudflareR2Service {
             const video = document.createElement('video');
             video.preload = 'metadata';
 
-            // Clean up function to prevent memory leaks
             const cleanup = () => {
                 URL.revokeObjectURL(video.src);
                 video.remove();
             };
 
             video.onloadedmetadata = () => {
-                // Seek to capture frame for thumbnail
-                // Try to seek to 5s if video is long enough, otherwise middle
                 if (video.duration === Infinity) {
-                    video.currentTime = 0; // Live stream or unknown, just take first frame
+                    video.currentTime = 0;
                 } else {
                     video.currentTime = Math.min(5, video.duration / 2);
                 }
@@ -241,7 +235,6 @@ class CloudflareR2Service {
                             thumbnail,
                         });
                     } else {
-                        // Fallback without thumbnail
                         resolve({
                             duration: video.duration,
                             width: video.videoWidth,
@@ -290,7 +283,6 @@ class CloudflareR2Service {
             throw new Error('Failed to generate thumbnail');
         }
 
-        // Convert base64 to blob
         const base64Response = await fetch(metadata.thumbnail);
         const blob = await base64Response.blob();
 

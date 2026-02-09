@@ -1,16 +1,19 @@
 
 import { PlaylistSource, Channel } from './types';
 
-export const NASA_CHANNELS: Channel[] = [
-  {
-    id: 'nasa-tv-uhd',
-    name: 'NASA TV Public',
-    group: 'Science & Education',
-    logo: 'https://www.nasa.gov/wp-content/themes/nasa/assets/images/nasa-logo.svg',
-    url: 'http://nasatv-lh.akamaihd.net/i/NASA_101@319270/index_1000_av-p.m3u8',
-    source: 'K 4k'
-  }
-];
+// App's virtual live channels - hosted by Genius Streamer
+// These are your own branded broadcast channels
+export const VIRTUAL_CHANNELS: Channel[] = [];
+
+// App branding configuration for virtual channel backgrounds
+export const APP_BRANDING = {
+  name: 'Genius Streamer',
+  shortName: 'GENIUS',
+  // Default background for virtual channel broadcasts (dark purple gradient)
+  backgroundImage: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"%3E%3Cdefs%3E%3ClinearGradient id="g" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" stop-color="%231a1a2e"/%3E%3Cstop offset="50%25" stop-color="%232d1b4e"/%3E%3Cstop offset="100%25" stop-color="%230f0f23"/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill="url(%23g)" width="1920" height="1080"/%3E%3C/svg%3E',
+  // To use your own hosted background image, uncomment and set your URL:
+  // backgroundImage: 'https://your-domain.com/assets/channel-bg.jpg',
+};
 
 // User provided Pluto TV M3U content
 const PLUTO_TV_M3U = "data:text/plain;charset=utf-8," + encodeURIComponent(`#EXTM3U

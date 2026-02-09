@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import MediaModal from './AddMediaModal';
+import BrandedDialog from '../frontend/BrandedDialog';
 
 interface EpisodeManagerModalProps {
     series: any;
@@ -12,6 +13,32 @@ const EpisodeManagerModal = ({ series, onClose }: EpisodeManagerModalProps) => {
     const [episodes, setEpisodes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [mediaModalState, setMediaModalState] = useState<{ open: boolean, initialData?: any, parentId?: string }>({ open: false });
+
+    const [dialog, setDialog] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'info' | 'danger';
+        onConfirm: () => void;
+        hideCancel?: boolean;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        type: 'info',
+        onConfirm: () => { },
+    });
+
+    const showDialog = (title: string, message: string, onConfirm?: () => void, type: 'info' | 'danger' = 'info', hideCancel = false) => {
+        setDialog({
+            isOpen: true,
+            title,
+            message,
+            onConfirm: onConfirm || (() => setDialog(d => ({ ...d, isOpen: false }))),
+            type,
+            hideCancel
+        });
+    };
 
     useEffect(() => {
         fetchEpisodes();
@@ -31,15 +58,22 @@ const EpisodeManagerModal = ({ series, onClose }: EpisodeManagerModalProps) => {
     };
 
     const handleDeleteEpisode = async (id: string, title: string) => {
-        if (!confirm(`Delete episode "${title}"?`)) return;
-        try {
-            const { error } = await supabase.from('media_library').delete().eq('id', id);
-            if (error) throw error;
-            fetchEpisodes();
-        } catch (err) {
-            console.error(err);
-            alert('Failed to delete episode');
-        }
+        showDialog(
+            'Confirm Deletion',
+            `Delete episode "${title}"?`,
+            async () => {
+                try {
+                    const { error } = await supabase.from('media_library').delete().eq('id', id);
+                    if (error) throw error;
+                    fetchEpisodes();
+                    setDialog(d => ({ ...d, isOpen: false }));
+                } catch (err) {
+                    console.error(err);
+                    showDialog('Error', 'Failed to delete episode', undefined, 'danger', true);
+                }
+            },
+            'danger'
+        );
     };
 
     return (
@@ -136,6 +170,16 @@ const EpisodeManagerModal = ({ series, onClose }: EpisodeManagerModalProps) => {
                     />
                 )}
             </div>
+
+            <BrandedDialog
+                isOpen={dialog.isOpen}
+                title={dialog.title}
+                message={dialog.message}
+                type={dialog.type}
+                hideCancel={dialog.hideCancel}
+                onConfirm={dialog.onConfirm}
+                onCancel={() => setDialog(d => ({ ...d, isOpen: false }))}
+            />
         </div>
     );
 };
