@@ -9,6 +9,7 @@ import MediaUploadPanel from './MediaUploadPanel';
 import StorageAnalytics from './StorageAnalytics';
 import R2ImageGallery from './R2ImageGallery';
 import CommandDeck from './CommandDeck';
+import AdminGovernance from './AdminGovernance';
 
 import AdManager from './AdManager';
 import VirtualChannelManager from './VirtualChannelManager';
@@ -16,6 +17,48 @@ import SeriesManager from './SeriesManager';
 import RemoteDownloader from './RemoteDownloader';
 import BrandLogo from '../frontend/BrandLogo';
 import BrandedDialog from '../frontend/BrandedDialog';
+
+// Global cache for broadcast data - persists while admin panel is open
+const broadcastDataCache = {
+    channels: null as any[] | null,
+    mediaList: null as any[] | null,
+    adsList: null as any[] | null,
+    timestamp: null as number | null,
+    TTL: 5 * 60 * 1000, // 5 minutes cache
+
+    isValid() {
+        return this.timestamp !== null &&
+            this.channels !== null &&
+            this.mediaList !== null &&
+            this.adsList !== null &&
+            (Date.now() - this.timestamp) < this.TTL;
+    },
+
+    get() {
+        if (this.isValid()) {
+            return {
+                channels: this.channels!,
+                mediaList: this.mediaList!,
+                adsList: this.adsList!
+            };
+        }
+        return null;
+    },
+
+    set(channels: any[], mediaList: any[], adsList: any[]) {
+        this.channels = channels;
+        this.mediaList = mediaList;
+        this.adsList = adsList;
+        this.timestamp = Date.now();
+    },
+
+    clear() {
+        this.channels = null;
+        this.mediaList = null;
+        this.adsList = null;
+        this.timestamp = null;
+    }
+};
 
 interface AdminDashboardProps {
     stats: CloudStats | null;
@@ -27,7 +70,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     const [isAuditing, setIsAuditing] = useState(false);
 
     // Persist admin view in localStorage
-    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'images' | 'ads' | 'broadcast' | 'downloader'>(() => {
+    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'images' | 'ads' | 'broadcast' | 'downloader' | 'governance'>(() => {
         const saved = localStorage.getItem('nexus_admin_view');
         return (saved as any) || 'overview';
     });
@@ -47,6 +90,43 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     useEffect(() => {
         localStorage.setItem('nexus_admin_media_cat', mediaCategory);
     }, [mediaCategory]);
+
+    // Broadcast data cache - loaded once when entering broadcast view
+    const [broadcastCache, setBroadcastCache] = useState<{
+        channels: any[];
+        mediaList: any[];
+        adsList: any[];
+    } | null>(null);
+
+    useEffect(() => {
+        if (adminView === 'broadcast' && !broadcastCache) {
+            // Fetch broadcast data once when entering broadcast view
+            const fetchBroadcast = async () => {
+                // Check cache first
+                if (broadcastDataCache.isValid()) {
+                    const cached = broadcastDataCache.get();
+                    if (cached) {
+                        setBroadcastCache(cached);
+                        return;
+                    }
+                }
+
+                // Fetch fresh data
+                const { data: chanData } = await supabase.from('virtual_channels').select('*').order('created_at', { ascending: false });
+                const { data: mediaData } = await supabase.from('media_library').select('id, title, duration, cover_url, stream_url, category').is('parent_id', null).eq('is_active', true);
+                const { data: adsData } = await supabase.from('ads_library').select('*').eq('is_active', true);
+
+                const channels = chanData || [];
+                const mediaList = mediaData || [];
+                const adsList = adsData || [];
+
+                // Update cache
+                broadcastDataCache.set(channels, mediaList, adsList);
+                setBroadcastCache({ channels, mediaList, adsList });
+            };
+            fetchBroadcast();
+        }
+    }, [adminView, broadcastCache]);
 
     // Modals
     const [playlistModalState, setPlaylistModalState] = useState<{ open: boolean, initialData?: any }>({ open: false });
@@ -183,6 +263,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         { id: 'images' as const, label: 'R2 Images', icon: <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm4 8l2-2 3 3 3-4 2 3" /> },
         { id: 'ads' as const, label: 'Ad Manager', icon: <path d="M11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882ZM11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882Z" /> },
         { id: 'broadcast' as const, label: 'Virtual Channels', icon: <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.121l6.811-6.81z" /> },
+        { id: 'governance' as const, label: 'Security & Ops', icon: <path d="M12 11c1.657 0 3-1.343 3-3S13.657 5 12 5 9 6.343 9 8s1.343 3 3 3zm0 0v2m-6 4a6 6 0 1112 0H6z" /> },
         { id: 'downloader' as const, label: 'Remote Downloader', icon: <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> },
     ];
 
@@ -196,10 +277,10 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     };
 
     const statsCards = [
-        { label: 'Active Signals', value: '117', trend: '+12%', color: 'text-emerald-400' },
-        { label: 'Degraded Nodes', value: '15', trend: '+2', color: 'text-orange-400' },
-        { label: 'Library Content', value: `${mediaLibrary.length} Items`, trend: 'NEW', color: 'text-purple-400' },
-        { label: 'Avg Latency', value: '542ms', trend: '-24ms', color: 'text-blue-400' },
+        { label: 'Global Users', value: stats?.globalUsers.toString() || '0', trend: 'LIVE', color: 'text-emerald-400' },
+        { label: 'Active Signals', value: stats?.activeSignals.toString() || '0', trend: 'STABLE', color: 'text-orange-400' },
+        { label: 'Library Content', value: `${mediaLibrary.length} Items`, trend: 'SYNCED', color: 'text-purple-400' },
+        { label: 'DB Latency', value: `${stats?.postgresLatency || 0}ms`, trend: stats?.dbStatus || 'OFFLINE', color: 'text-blue-400' },
     ];
 
     return (
@@ -253,21 +334,18 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
             </header>
 
             {/* MAIN CONTENT AREA */}
-            <main className="flex-1 overflow-y-auto no-scrollbar relative p-4 md:p-8 lg:p-12 pb-24 lg:pb-12 pt-20 lg:pt-12">
+            <main className="flex-1 overflow-y-auto no-scrollbar relative p-3 md:p-8 lg:p-12 pb-28 lg:pb-12 pt-24 lg:pt-12">
                 <div className={`mx-auto pb-8 lg:pb-0 ${adminView === 'broadcast' ? 'max-w-none' : 'max-w-7xl'}`}>
 
-                    {/* VIEW HEADER */}
-                    <div className="flex items-end justify-between mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div>
+                    {/* VIEW HEADER - Title Only */}
+                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="space-y-1">
                             <h1 className="text-4xl font-black uppercase tracking-[0.1em] text-white mb-2">
                                 {navItems.find(n => n.id === adminView)?.label}
                             </h1>
                             <p className="text-xs font-mono text-slate-500 uppercase tracking-widest pl-1">
                                 System Status: <span className="text-emerald-500">OPTIMAL</span>
                             </p>
-                        </div>
-                        <div className="flex gap-3">
-                            {/* Contextual Actions Could Go Here */}
                         </div>
                     </div>
 
@@ -476,8 +554,20 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     {adminView === 'ads' && <AdManager />}
 
                     {adminView === 'broadcast' && (
-                        <div className="max-w-none">
-                            <VirtualChannelManager />
+                        <VirtualChannelManager
+                            cachedChannels={broadcastCache?.channels || []}
+                            cachedMediaList={broadcastCache?.mediaList || []}
+                            cachedAdsList={broadcastCache?.adsList || []}
+                            onDataRefresh={(channels, mediaList, adsList) => {
+                                broadcastDataCache.set(channels, mediaList, adsList);
+                                setBroadcastCache({ channels, mediaList, adsList });
+                            }}
+                        />
+                    )}
+
+                    {adminView === 'governance' && (
+                        <div className="animate-in fade-in duration-500">
+                            <AdminGovernance />
                         </div>
                     )}
 
@@ -507,26 +597,26 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     parentId={mediaModalState.parentId}
                 />
             )}
-            {/* MOBILE BOTTOM NAV */}
-            <div className="lg:hidden fixed bottom-6 left-4 right-4 z-50">
-                <div className="bg-black/90 backdrop-blur-xl border border-white/10 rounded-3xl p-2 shadow-2xl flex items-center justify-between overflow-x-auto no-scrollbar">
+            {/* MOBILE BOTTOM NAV - Icons Only */}
+            <div className="lg:hidden fixed bottom-4 left-4 right-4 z-50">
+                <div className="bg-black/90 backdrop-blur-2xl border border-white/10 rounded-3xl p-2 shadow-2xl flex items-center justify-center gap-1 overflow-x-auto no-scrollbar">
                     {navItems.map(item => (
                         <button
                             key={item.id}
                             onClick={() => setAdminView(item.id)}
-                            className={`flex flex-col items-center justify-center min-w-[3.5rem] p-3 rounded-2xl transition-all ${adminView === item.id ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:text-white'}`}
+                            className={`flex items-center justify-center min-w-[3.5rem] py-3 rounded-2xl transition-all ${adminView === item.id ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-400 hover:text-white'}`}
                         >
-                            <svg className="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 {item.icon}
                             </svg>
                         </button>
                     ))}
-                    <div className="w-px h-8 bg-white/10 mx-2" />
+                    <div className="w-px h-8 bg-white/10 mx-1" />
                     <button
                         onClick={onClose}
-                        className="flex flex-col items-center justify-center min-w-[3.5rem] p-3 rounded-2xl text-red-400 hover:bg-red-500/10 transition-all"
+                        className="flex items-center justify-center min-w-[3.5rem] py-3 rounded-2xl text-red-400 hover:bg-red-500/10 transition-all"
                     >
-                        <svg className="w-5 h-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                         </svg>
                     </button>

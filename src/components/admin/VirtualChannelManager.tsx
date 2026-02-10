@@ -2,6 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { ADMIN_TEST_DURATION_KEY, ADMIN_TEST_DURATION_SECONDS, CLOUDFLARE_BASE_URL } from '../../constants';
+import ChannelSelector from './broadcast/ChannelSelector';
+import ChannelHeader from './broadcast/ChannelHeader';
+import Timeline from './broadcast/Timeline';
+import SchedulePanel from './broadcast/SchedulePanel';
+import MediaPicker from './broadcast/MediaPicker';
+import BroadcastControls from './broadcast/BroadcastControls';
+import MissingDurationReport from './broadcast/MissingDurationReport';
+import ResyncConfirm from './broadcast/ResyncConfirm';
 
 interface ScheduleItem {
     id: string;
@@ -14,11 +22,30 @@ interface ScheduleItem {
     ads_library?: { title: string; duration: number; ad_url: string };
 }
 
-const VirtualChannelManager = () => {
-    const [channels, setChannels] = useState<any[]>([]);
-    const [mediaList, setMediaList] = useState<any[]>([]);
-    const [adsList, setAdsList] = useState<any[]>([]);
-    const [isCreating, setIsCreating] = useState(false);
+interface MissingItem {
+    id: string;
+    title: string;
+    url: string;
+    type: 'AD' | 'MEDIA';
+}
+
+interface VirtualChannelManagerProps {
+    // Allow passing cached data from parent
+    cachedChannels?: any[];
+    cachedMediaList?: any[];
+    cachedAdsList?: any[];
+    onDataRefresh?: (channels: any[], mediaList: any[], adsList: any[]) => void;
+}
+
+const VirtualChannelManager = ({
+    cachedChannels,
+    cachedMediaList,
+    cachedAdsList,
+    onDataRefresh
+}: VirtualChannelManagerProps) => {
+    const [channels, setChannels] = useState<any[]>(cachedChannels || []);
+    const [mediaList, setMediaList] = useState<any[]>(cachedMediaList || []);
+    const [adsList, setAdsList] = useState<any[]>(cachedAdsList || []);
     const [selectedChannel, setSelectedChannel] = useState<any>(null);
     const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
     const [pickerTab, setPickerTab] = useState<'media' | 'ads'>('media');
@@ -52,10 +79,21 @@ const VirtualChannelManager = () => {
     const [isSavingDurations, setIsSavingDurations] = useState(false);
     const [testDurationEnabled, setTestDurationEnabled] = useState(() => localStorage.getItem(ADMIN_TEST_DURATION_KEY) === 'true');
     const [mobilePanel, setMobilePanel] = useState<'schedule' | 'picker'>('schedule');
+    const [isLoading, setIsLoading] = useState(!cachedChannels);
 
+    // Use cached data if available, otherwise fetch
     useEffect(() => {
-        fetchData();
+        if (!cachedChannels) {
+            fetchData();
+        }
     }, []);
+
+    // Notify parent of data refresh
+    useEffect(() => {
+        if (channels.length > 0 && mediaList.length > 0 && adsList.length > 0 && onDataRefresh) {
+            onDataRefresh(channels, mediaList, adsList);
+        }
+    }, [channels, mediaList, adsList]);
 
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {
@@ -106,6 +144,7 @@ const VirtualChannelManager = () => {
     }, [selectedChannel?.id, realtimeEnabled]);
 
     const fetchData = async () => {
+        setIsLoading(true);
         const { data: chanData } = await supabase.from('virtual_channels').select('*').order('created_at', { ascending: false });
         const { data: mediaData } = await supabase.from('media_library').select('id, title, duration, cover_url, stream_url, category').is('parent_id', null).eq('is_active', true);
         const { data: adsData } = await supabase.from('ads_library').select('*').eq('is_active', true);
@@ -113,6 +152,7 @@ const VirtualChannelManager = () => {
         if (chanData) setChannels(chanData);
         if (mediaData) setMediaList(mediaData);
         if (adsData) setAdsList(adsData);
+        setIsLoading(false);
     };
 
     const saveChannelName = async () => {
@@ -134,6 +174,34 @@ const VirtualChannelManager = () => {
         fetchData();
     };
 
+    const handleCreateChannel = async () => {
+        setProcessing('Creating frequency...');
+        try {
+            const newName = `NEW CHANNEL ${channels.length + 1}`;
+            const { data, error } = await supabase
+                .from('virtual_channels')
+                .insert([{
+                    name: newName,
+                    is_active: false,
+                    logo_url: 'https://www.kairo.me/wp-content/uploads/2021/02/kairo_home.jpg'
+                }])
+                .select()
+                .single();
+
+            if (error) throw error;
+            if (data) {
+                setChannels([data, ...channels]);
+                setSelectedChannel(data);
+                setSuccess(`Created frequency: ${newName}`);
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to create channel');
+        } finally {
+            setProcessing(null);
+            setTimeout(() => { setSuccess(null); setError(null); }, 3000);
+        }
+    };
+
     const fetchSchedule = async (channelId: string) => {
         const { data } = await supabase
             .from('channel_schedule')
@@ -151,16 +219,10 @@ const VirtualChannelManager = () => {
         }
     };
 
-    const handleCreateChannel = async (e: any) => {
-        e.preventDefault();
-        const name = e.target.name.value;
-        const description = e.target.description?.value || '';
-        const { data, error } = await supabase.from('virtual_channels').insert([{ name, description }]).select().single();
-        if (!error && data) {
-            setIsCreating(false);
-            fetchData();
-            setSelectedChannel(data);
-        }
+    const handleChannelSelect = (channel: any) => {
+        setSelectedChannel(channel);
+        setError(null);
+        setSuccess(null);
     };
 
     const addToSchedule = async (id: string, type: 'media' | 'ad', durationOverride?: number) => {
@@ -184,7 +246,6 @@ const VirtualChannelManager = () => {
             payload.duration = duration;
         }
 
-        // Remove undefined values to avoid Supabase errors
         if (payload.media_id === undefined) { delete payload.media_id; }
         if (payload.ad_id === undefined) { delete payload.ad_id; }
 
@@ -214,7 +275,6 @@ const VirtualChannelManager = () => {
     const removeFromSchedule = async (id: string) => {
         const { error } = await supabase.from('channel_schedule').delete().eq('id', id);
         if (!error) {
-            // Re-index remaining items
             const remaining = schedule.filter(s => s.id !== id);
             await reindexSchedule(remaining);
             fetchSchedule(selectedChannel.id);
@@ -231,7 +291,6 @@ const VirtualChannelManager = () => {
         }
     };
 
-    // Server-side go_live function
     const handleGoLive = async () => {
         if (!selectedChannel || schedule.length === 0) {
             setError('Schedule is empty. Add media before going live.');
@@ -242,11 +301,9 @@ const VirtualChannelManager = () => {
         setError(null);
 
         try {
-            // Call server-side function
             const { data, error } = await supabase.rpc('go_live', { channel_uuid: selectedChannel.id });
 
             if (error) {
-                // Fallback to direct update
                 const { error: updateError } = await supabase
                     .from('virtual_channels')
                     .upsert({
@@ -271,7 +328,6 @@ const VirtualChannelManager = () => {
         }
     };
 
-    // Server-side go_offline function
     const handleGoOffline = async () => {
         if (!selectedChannel) return;
         setProcessing('Going offline...');
@@ -279,7 +335,6 @@ const VirtualChannelManager = () => {
         try {
             const { error } = await supabase.rpc('go_offline', { channel_uuid: selectedChannel.id });
 
-            // Fallback
             if (error) {
                 await supabase
                     .from('virtual_channels')
@@ -300,7 +355,6 @@ const VirtualChannelManager = () => {
         }
     };
 
-    // Server-side schedule_live function
     const handleScheduleLive = async (time: string) => {
         if (!selectedChannel || !time) return;
         setProcessing('Scheduling...');
@@ -315,7 +369,6 @@ const VirtualChannelManager = () => {
                 start_time: isoTime
             });
 
-            // Fallback
             if (error) {
                 await supabase
                     .from('virtual_channels')
@@ -337,7 +390,6 @@ const VirtualChannelManager = () => {
         }
     };
 
-    // Drag and drop handlers
     const handleDragStart = (index: number) => {
         setDragIndex(index);
     };
@@ -388,11 +440,6 @@ const VirtualChannelManager = () => {
         fetchSchedule(selectedChannel.id);
     };
 
-    const filteredMedia = mediaList.filter(m =>
-        m.title.toLowerCase().includes(mediaSearch.toLowerCase()) ||
-        m.category?.toLowerCase().includes(mediaSearch.toLowerCase())
-    );
-
     const toggleTestDuration = () => {
         const next = !testDurationEnabled;
         setTestDurationEnabled(next);
@@ -414,9 +461,7 @@ const VirtualChannelManager = () => {
         return toNumber(item.duration) || toNumber(item.media_library?.duration) || toNumber(item.ads_library?.duration) || 0;
     };
 
-    // Calculate total duration, handling null/0 values
     const totalDuration = schedule.reduce((acc, curr) => acc + getItemDuration(curr), 0);
-
     const mediaCount = schedule.filter(s => s.media_id).length;
     const adCount = schedule.filter(s => s.ad_id).length;
 
@@ -538,7 +583,7 @@ const VirtualChannelManager = () => {
         return '';
     };
 
-    const getMissingDurationItems = () => {
+    const getMissingDurationItems = (): MissingItem[] => {
         return schedule.filter(item => getItemDuration(item) <= 0).map(item => ({
             id: item.id,
             title: item.media_library?.title || item.ads_library?.title || 'Unknown',
@@ -547,7 +592,7 @@ const VirtualChannelManager = () => {
         }));
     };
 
-    const retryDurationForItem = async (item: { id: string; url: string; title: string; type: string }) => {
+    const retryDurationForItem = async (item: MissingItem) => {
         if (!selectedChannel) return;
         if (!item.url) {
             setError('Missing media URL');
@@ -716,8 +761,22 @@ const VirtualChannelManager = () => {
         });
     };
 
+    const timeline = getScheduleTimeline();
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Loading Broadcast Systems...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Success/Error Messages */}
             {error && (
                 <div className="fixed top-4 right-4 z-50 bg-red-500/90 border border-red-400/20 text-white px-6 py-3 rounded-xl text-sm font-black uppercase tracking-widest backdrop-blur-xl">
@@ -730,717 +789,261 @@ const VirtualChannelManager = () => {
                 </div>
             )}
 
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-                <div>
-                    <h2 className="text-2xl font-black uppercase tracking-widest text-white">Broadcast Deck</h2>
-                    <p className="text-[10px] text-purple-500 font-black mt-1 uppercase tracking-widest">Virtual VOD-to-Live Systems</p>
+            {/* Header with Channel Selector Inside */}
+            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-6">
+                <div className="flex-1">
+                    <h2 className="text-3xl font-black uppercase tracking-widest text-white mb-2">Broadcast Deck</h2>
+                    <p className="text-xs text-purple-500 font-black uppercase tracking-widest">Virtual VOD-to-Live Systems</p>
                 </div>
-                <button
-                    onClick={() => setIsCreating(true)}
-                    className="w-full md:w-auto px-6 py-3 bg-purple-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-purple-500 transition-all shadow-xl shadow-purple-900/20"
-                >
-                    Initialize Channel
-                </button>
+
+                {/* Channel Selector - Now inside the main container */}
+                <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3">
+                    <button
+                        onClick={handleCreateChannel}
+                        disabled={processing !== null}
+                        className="px-6 py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 whitespace-nowrap"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                        </svg>
+                        New Channel
+                    </button>
+
+                    <div className="relative min-w-[280px]">
+                        <select
+                            value={selectedChannel?.id || ''}
+                            onChange={(e) => {
+                                const next = channels.find(c => c.id === e.target.value);
+                                if (next) handleChannelSelect(next);
+                            }}
+                            className="w-full appearance-none bg-gradient-to-r from-orange-600/20 to-purple-600/20 border border-white/10 rounded-2xl px-6 py-4 pr-12 text-xs font-black uppercase tracking-widest text-white focus:outline-none focus:border-orange-500/60 focus:ring-2 focus:ring-orange-500/20 transition-all font-mono"
+                        >
+                            <option value="" disabled>
+                                {channels.length === 0 ? 'No frequencies found' : 'Select Frequency'}
+                            </option>
+                            {channels.map(chan => (
+                                <option key={chan.id} value={chan.id} className="bg-slate-900 text-white">
+                                    {chan.name} {chan.is_active ? '• [LIVE]' : '• [IDLE]'}
+                                </option>
+                            ))}
+                        </select>
+                        <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-8">
-                {/* Channel Dropdown */}
-                <div className="space-y-4 lg:col-span-3">
-                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Active Frequencies</h3>
-                    {channels.length === 0 ? (
-                        <div className="p-8 text-center opacity-30">
-                            <p className="text-[10px] font-black uppercase tracking-[0.3em]">No channels initialized</p>
+            {/* Channel Info Bar - Shows when channel is selected */}
+            {selectedChannel && (
+                <div className="bg-gradient-to-r from-orange-600/10 via-purple-600/10 to-blue-600/10 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className={`w-4 h-4 rounded-full ${selectedChannel.is_active ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse' : 'bg-red-400'}`} />
+                            <div>
+                                <h3 className="text-lg font-black uppercase tracking-widest text-white">{selectedChannel.name}</h3>
+                                {selectedChannel.description && (
+                                    <p className="text-xs text-slate-400 uppercase tracking-wider">{selectedChannel.description}</p>
+                                )}
+                            </div>
+                            <span className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-xl ${selectedChannel.is_active ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                {selectedChannel.is_active ? 'ON AIR' : 'OFFLINE'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-6 text-xs font-mono">
+                            <div>
+                                <span className="text-slate-500 uppercase tracking-wider">Segments</span>
+                                <span className="block text-white font-black">{schedule.length}</span>
+                            </div>
+                            <div>
+                                <span className="text-slate-500 uppercase tracking-wider">Total Duration</span>
+                                <span className="block text-purple-400 font-black">{formatDuration(totalDuration)}</span>
+                            </div>
+                            <div>
+                                <span className="text-slate-500 uppercase tracking-wider">Live Viewers</span>
+                                <span className="block text-emerald-400 font-black">{liveViewers}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+                {/* Left Column - Schedule & Timeline */}
+                <div className="xl:col-span-3 space-y-6">
+                    {/* Timeline Preview */}
+                    {showPreview && schedule.length > 0 && (
+                        <Timeline
+                            timeline={timeline}
+                            totalDuration={totalDuration}
+                            formatDuration={formatDuration}
+                            getItemDuration={getItemDuration}
+                        />
+                    )}
+
+                    {/* Mobile Panel Toggle */}
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setMobilePanel('schedule')}
+                            className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${mobilePanel === 'schedule' ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/20' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                        >
+                            Schedule
+                        </button>
+                        <button
+                            onClick={() => setMobilePanel('picker')}
+                            className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${mobilePanel === 'picker' ? 'bg-purple-600 text-white shadow-xl shadow-purple-900/20' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                        >
+                            Library
+                        </button>
+                    </div>
+
+                    {/* Schedule Items */}
+                    <div className={`bg-white/5 border border-white/10 rounded-3xl p-6 ${mobilePanel !== 'schedule' ? 'hidden xl:block' : ''}`}>
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-sm font-black uppercase tracking-widest text-white">Schedule Queue</h3>
+                            {schedule.length > 0 && (
+                                <button
+                                    onClick={() => setShowPreview(!showPreview)}
+                                    className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all"
+                                >
+                                    {showPreview ? 'Hide Timeline' : 'Show Timeline'}
+                                </button>
+                            )}
+                        </div>
+                        <SchedulePanel
+                            schedule={schedule}
+                            formatDuration={formatDuration}
+                            getItemDuration={getItemDuration}
+                            onRemove={removeFromSchedule}
+                            onMove={moveItem}
+                            onDragStart={handleDragStart}
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                            onDragEnd={handleDragEnd}
+                            isReordering={isReordering}
+                            dragIndex={dragIndex}
+                            dragOverIndex={dragOverIndex}
+                        />
+                    </div>
+
+                    {/* Media Picker */}
+                    <div className={`bg-white/5 border border-white/10 rounded-3xl p-6 ${mobilePanel !== 'picker' ? 'hidden xl:block' : ''}`}>
+                        <MediaPicker
+                            mediaList={mediaList}
+                            adsList={adsList}
+                            schedule={schedule}
+                            pickerTab={pickerTab}
+                            mediaSearch={mediaSearch}
+                            formatDuration={formatDuration}
+                            onPickerTabChange={setPickerTab}
+                            onMediaSearchChange={setMediaSearch}
+                            onAddMedia={(id) => addToSchedule(id, 'media')}
+                            onAddAd={(id) => addToSchedule(id, 'ad')}
+                        />
+                    </div>
+                </div>
+
+                {/* Right Column - Controls */}
+                <div className="xl:col-span-1">
+                    {selectedChannel ? (
+                        <div className="sticky top-6 space-y-4">
+                            {/* Channel Header / Edit */}
+                            <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
+                                <ChannelHeader
+                                    channel={selectedChannel}
+                                    scheduleLength={schedule.length}
+                                    mediaCount={mediaCount}
+                                    adCount={adCount}
+                                    isEditingName={isEditingName}
+                                    pendingName={pendingName}
+                                    showPreview={showPreview}
+                                    formatDuration={formatDuration}
+                                    totalDuration={totalDuration}
+                                    onStartEditName={() => setIsEditingName(true)}
+                                    onNameChange={setPendingName}
+                                    onSaveName={saveChannelName}
+                                    onCancelEditName={() => { setIsEditingName(false); setPendingName(selectedChannel.name || ''); }}
+                                    onTogglePreview={() => setShowPreview(!showPreview)}
+                                />
+                            </div>
+
+                            {/* Broadcast Controls */}
+                            <div className="bg-gradient-to-br from-orange-600/10 to-purple-600/10 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
+                                <BroadcastControls
+                                    selectedChannel={selectedChannel}
+                                    scheduleLength={schedule.length}
+                                    totalDuration={totalDuration}
+                                    mediaCount={mediaCount}
+                                    adCount={adCount}
+                                    liveViewers={liveViewers}
+                                    liveMetrics={liveMetrics}
+                                    formatDuration={formatDuration}
+                                    onScheduleLive={handleScheduleLive}
+                                    onClearScheduleTime={() => {
+                                        supabase.from('virtual_channels').upsert({
+                                            id: selectedChannel.id,
+                                            scheduled_start_time: null
+                                        }, { onConflict: 'id' }).then(() => fetchData());
+                                    }}
+                                    onRefresh={() => fetchSchedule(selectedChannel.id)}
+                                    onAutoCalc={backfillMissingDurations}
+                                    autoCalcRunning={processing === 'Calculating durations...'}
+                                    onSaveDurations={saveDurationsToDb}
+                                    savingDurations={isSavingDurations}
+                                    onResync={() => setShowResyncConfirm(true)}
+                                    onGoLive={handleGoLive}
+                                    onGoOffline={handleGoOffline}
+                                    disableGoLive={schedule.length === 0 || processing !== null || missingDurationCount > 0}
+                                    processingLabel={processing}
+                                    missingDurationCount={missingDurationCount}
+                                    onShowMissingReport={() => setShowMissingReport(true)}
+                                />
+                            </div>
                         </div>
                     ) : (
-                        <div className="space-y-3">
-                            <div className="relative">
-                                <select
-                                    value={selectedChannel?.id || ''}
-                                    onChange={(e) => {
-                                        const next = channels.find(c => c.id === e.target.value);
-                                        if (next) {
-                                            setSelectedChannel(next);
-                                            setError(null);
-                                            setSuccess(null);
-                                        }
-                                    }}
-                                    className="w-full appearance-none bg-white/5 border border-white/10 rounded-2xl px-4 py-3 pr-10 text-[10px] font-black uppercase tracking-widest text-white focus:outline-none focus:border-purple-500/60"
-                                >
-                                    <option value="" disabled>Select Channel</option>
-                                    {channels.map(chan => (
-                                        <option key={chan.id} value={chan.id}>
-                                            {chan.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        <div className="bg-white/5 border border-white/10 rounded-3xl p-12 text-center flex flex-col items-center">
+                            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
+                                <svg className="w-10 h-10 text-slate-700 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                                 </svg>
                             </div>
-                            {selectedChannel && (
-                                <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-2.5 h-2.5 rounded-full ${selectedChannel.is_active ? 'bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse' : 'bg-red-400'}`} />
-                                        <div className="flex-1 min-w-0">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-white block truncate">{selectedChannel.name}</span>
-                                            {selectedChannel.description && (
-                                                <span className="text-[8px] uppercase tracking-wider block mt-1 truncate text-slate-500">{selectedChannel.description}</span>
-                                            )}
-                                        </div>
-                                        <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-lg ${selectedChannel.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                            {selectedChannel.is_active ? 'LIVE' : 'OFF'}
-                                        </span>
-                                    </div>
-                                    {selectedChannel.live_started_at && selectedChannel.is_active && (
-                                        <div className="mt-3 text-[8px] font-mono text-emerald-400 flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-                                            Started: {new Date(selectedChannel.live_started_at).toLocaleTimeString()}
-                                        </div>
-                                    )}
-                                    {selectedChannel.scheduled_start_time && selectedChannel.is_active && !selectedChannel.live_started_at && (
-                                        <div className="mt-3 text-[8px] font-mono text-purple-400 flex items-center gap-2">
-                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                            Scheduled: {new Date(selectedChannel.scheduled_start_time).toLocaleString()}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-400 mb-2">No Frequency Selected</p>
+                            <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-8 max-w-[200px] leading-relaxed">Select an existing frequency from the dropdown or initialize a new signal path.</p>
+
+                            <button
+                                onClick={handleCreateChannel}
+                                disabled={processing !== null}
+                                className="px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all flex items-center gap-2"
+                            >
+                                {processing === 'Creating frequency...' ? 'Initializing...' : 'Quick Create Frequency'}
+                            </button>
                         </div>
                     )}
                 </div>
-
-                {/* Schedule & Media Picker */}
-                {selectedChannel && (
-                    <div className="lg:col-span-9 space-y-6 md:space-y-8 bg-white/5 border border-white/10 rounded-[24px] md:rounded-[28px] p-4 md:p-8">
-                        {/* Channel Header */}
-                        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
-                            <div>
-                                {!isEditingName ? (
-                                    <div className="flex items-center gap-3">
-                                        <h3 className="text-sm font-black uppercase tracking-widest text-white">{selectedChannel.name}</h3>
-                                        <button
-                                            onClick={() => setIsEditingName(true)}
-                                            className="px-2 py-1 text-[9px] font-black uppercase tracking-widest bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white transition-all"
-                                        >
-                                            Edit
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                                        <input
-                                            value={pendingName}
-                                            onChange={(e) => setPendingName(e.target.value)}
-                                            className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[10px] text-white focus:outline-none focus:border-purple-500 font-mono w-full sm:w-64"
-                                            placeholder="Channel name"
-                                        />
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={saveChannelName}
-                                                className="px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-purple-600 text-white hover:bg-purple-500 transition-all"
-                                            >
-                                                Save
-                                            </button>
-                                            <button
-                                                onClick={() => { setIsEditingName(false); setPendingName(selectedChannel.name || ''); }}
-                                                className="px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-white/5 text-slate-400 hover:text-white transition-all"
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                                <div className="flex items-center gap-4 mt-2">
-                                    <span className="text-[10px] font-mono text-purple-400 uppercase">{schedule.length} Segments</span>
-                                    <span className="text-[10px] font-mono text-slate-600">•</span>
-                                    <span className="text-[10px] font-mono text-slate-400 uppercase">{mediaCount} Media</span>
-                                    <span className="text-[10px] font-mono text-slate-600">•</span>
-                                    <span className="text-[10px] font-mono text-orange-400 uppercase">{adCount} Ads</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                {schedule.length > 0 && (
-                                    <button
-                                        onClick={() => setShowPreview(!showPreview)}
-                                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${showPreview ? 'bg-purple-600 text-white' : 'bg-white/5 text-slate-400 hover:text-white'}`}
-                                    >
-                                        {showPreview ? 'Hide Timeline' : 'Timeline'}
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Mobile Panel Toggle */}
-                        <div className="md:hidden grid grid-cols-2 gap-3">
-                            <button
-                                onClick={() => setMobilePanel('schedule')}
-                                className={`py-3 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all ${mobilePanel === 'schedule' ? 'bg-purple-600 text-white' : 'bg-white/5 text-slate-400'}`}
-                            >
-                                Schedule
-                            </button>
-                            <button
-                                onClick={() => setMobilePanel('picker')}
-                                className={`py-3 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all ${mobilePanel === 'picker' ? 'bg-orange-600 text-white' : 'bg-white/5 text-slate-400'}`}
-                            >
-                                Library
-                            </button>
-                        </div>
-
-                        {/* Timeline Preview */}
-                        {showPreview && schedule.length > 0 && (
-                            <div className="bg-black/40 border border-white/5 rounded-2xl p-6">
-                                <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Broadcast Timeline ({formatDuration(totalDuration)} total)</h4>
-                                <div className="flex h-8 rounded-xl overflow-hidden border border-white/5">
-                                    {getScheduleTimeline().map((item, idx) => {
-                                        const dur = getItemDuration(item);
-                                        const widthPercent = totalDuration > 0 ? (dur / totalDuration) * 100 : 0;
-                                        return (
-                                            <div
-                                                key={item.id}
-                                                className={`relative group cursor-pointer transition-all hover:brightness-125 ${item.ad_id ? 'bg-orange-600/60' : 'bg-purple-600/60'}`}
-                                                style={{ width: `${Math.max(widthPercent, 1)}%` }}
-                                            >
-                                                <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                                                    <span className="text-[7px] font-black text-white/60 truncate px-1">{idx + 1}</span>
-                                                </div>
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-black/90 border border-white/10 rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                                                    <p className="text-[9px] font-black text-white">{item.media_library?.title || item.ads_library?.title}</p>
-                                                    <p className="text-[8px] text-slate-400">{formatDuration(dur)}</p>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="flex justify-between mt-2">
-                                    <span className="text-[8px] font-mono text-slate-600">0:00</span>
-                                    <span className="text-[8px] font-mono text-slate-600">{formatDuration(totalDuration)}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Schedule Items */}
-                        <div className={`grid grid-cols-1 gap-3 max-h-[52vh] md:max-h-[520px] overflow-y-auto no-scrollbar pr-2 ${mobilePanel !== 'schedule' ? 'hidden md:grid' : ''}`}>
-                            {schedule.length === 0 && (
-                                <div className="py-16 text-center">
-                                    <svg className="w-12 h-12 text-slate-800 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600">Empty Schedule</p>
-                                    <p className="text-[9px] text-slate-700 mt-2">Add media and ads from the picker below</p>
-                                </div>
-                            )}
-                            {schedule.map((item, idx) => {
-                                const dur = getItemDuration(item);
-
-                                return (
-                                    <div
-                                        key={item.id}
-                                        draggable
-                                        onDragStart={() => handleDragStart(idx)}
-                                        onDragOver={(e) => handleDragOver(e, idx)}
-                                        onDrop={() => handleDrop(idx)}
-                                        onDragEnd={handleDragEnd}
-                                        className={`bg-black/40 border rounded-2xl p-3 md:p-4 flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4 group transition-all cursor-grab active:cursor-grabbing ${dragOverIndex === idx ? 'border-purple-500 bg-purple-500/10' :
-                                            dragIndex === idx ? 'opacity-50 border-white/5' :
-                                                item.ad_id ? 'border-orange-500/10' : 'border-white/5'
-                                            }`}
-                                    >
-                                        <div className="flex flex-col gap-0.5 opacity-30 group-hover:opacity-60 transition-opacity">
-                                            <div className="w-1 h-1 bg-white rounded-full" /><div className="w-1 h-1 bg-white rounded-full" />
-                                            <div className="w-1 h-1 bg-white rounded-full" /><div className="w-1 h-1 bg-white rounded-full" />
-                                            <div className="w-1 h-1 bg-white rounded-full" /><div className="w-1 h-1 bg-white rounded-full" />
-                                        </div>
-
-                                        <span className="text-[10px] font-black text-slate-700 w-6 text-center">{idx + 1}</span>
-
-                                        <div className="w-10 h-10 rounded-lg bg-white/5 overflow-hidden shrink-0">
-                                            {item.media_library?.cover_url ? (
-                                                <img src={item.media_library.cover_url.startsWith('http') ? item.media_library.cover_url : CLOUDFLARE_BASE_URL + item.media_library.cover_url} className="w-full h-full object-cover" alt="" />
-                                            ) : (
-                                                <div className={`w-full h-full flex items-center justify-center ${item.ad_id ? 'bg-orange-500/10' : 'bg-purple-500/10'}`}>
-                                                    {item.ad_id ? (
-                                                        <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882Z" /></svg>
-                                                    ) : (
-                                                        <svg className="w-5 h-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <h4 className="text-[11px] font-black uppercase text-white truncate">{item.media_library?.title || item.ads_library?.title || 'Unknown'}</h4>
-                                                {item.ad_id && <span className="px-1.5 py-0.5 bg-orange-600/20 text-orange-500 text-[7px] font-black rounded border border-orange-500/20 shrink-0">AD</span>}
-                                                {item.media_library?.category && (
-                                                    <span className="px-1.5 py-0.5 bg-purple-600/20 text-purple-400 text-[7px] font-black rounded border border-purple-500/20 shrink-0">{item.media_library.category}</span>
-                                                )}
-                                            </div>
-
-                                            <div className="flex items-center gap-2 mt-1">
-                                                {dur > 0 ? (
-                                                    <span className="text-[9px] font-mono text-slate-500">{formatDuration(dur)}</span>
-                                                ) : (
-                                                    <span className="text-[8px] text-orange-400 font-black uppercase">Duration missing</span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); moveItem(idx, 'up'); }}
-                                                disabled={idx === 0 || isReordering}
-                                                className="p-1 text-slate-500 hover:text-white disabled:opacity-20"
-                                            >
-                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" /></svg>
-                                            </button>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); moveItem(idx, 'down'); }}
-                                                disabled={idx === schedule.length - 1 || isReordering}
-                                                className="p-1 text-slate-500 hover:text-white disabled:opacity-20"
-                                            >
-                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                                            </button>
-                                        </div>
-
-                                        <button
-                                            onClick={() => removeFromSchedule(item.id)}
-                                            className="p-2 opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {/* Media/Ads Picker */}
-                        <div className={`mt-8 pt-8 border-t border-white/5 ${mobilePanel !== 'picker' ? 'hidden md:block' : ''}`}>
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
-                                <div className="flex gap-4">
-                                    <button
-                                        onClick={() => setPickerTab('media')}
-                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${pickerTab === 'media' ? 'text-white border-b-2 border-purple-500 pb-1' : 'text-slate-600 hover:text-slate-400'}`}
-                                    >
-                                        Media Library ({mediaList.length})
-                                    </button>
-                                    <button
-                                        onClick={() => setPickerTab('ads')}
-                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${pickerTab === 'ads' ? 'text-white border-b-2 border-orange-500 pb-1' : 'text-slate-600 hover:text-slate-400'}`}
-                                    >
-                                        Ads Library ({adsList.length})
-                                    </button>
-                                </div>
-                                {pickerTab === 'media' && (
-                                    <input
-                                        type="text"
-                                        placeholder="Search media..."
-                                        value={mediaSearch}
-                                        onChange={(e) => setMediaSearch(e.target.value)}
-                                        className="bg-black/20 border border-white/5 rounded-xl px-4 py-2 text-[10px] text-white w-full md:w-48 focus:outline-none focus:border-purple-500/50"
-                                    />
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[45vh] md:max-h-60 overflow-y-auto no-scrollbar pr-2">
-                                {pickerTab === 'media' ? (
-                                    filteredMedia.length > 0 ? filteredMedia.map(media => {
-                                        const alreadyInSchedule = schedule.some(s => s.media_id === media.id);
-                                        const hasDuration = media.duration && media.duration > 0;
-
-                                        return (
-                                            <div
-                                                key={media.id}
-                                                onClick={() => addToSchedule(media.id, 'media')}
-                                                className={`bg-white/5 border border-white/5 hover:border-purple-500/30 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all group ${alreadyInSchedule ? 'ring-1 ring-purple-500/20' : ''}`}
-                                            >
-                                                <div className="w-10 h-10 rounded-lg bg-black/40 overflow-hidden relative shrink-0">
-                                                    <img src={media.cover_url?.startsWith('http') ? media.cover_url : CLOUDFLARE_BASE_URL + (media.cover_url || '')} className="w-full h-full object-cover opacity-50 group-hover:opacity-100 transition-opacity" alt="" />
-                                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 4v16m8-8H4" /></svg>
-                                                    </div>
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <span className="text-[10px] font-black uppercase text-slate-400 group-hover:text-white truncate block">{media.title}</span>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="text-[7px] text-slate-600 uppercase font-bold">{media.category}</span>
-                                                        {hasDuration && (
-                                                            <span className="text-[7px] text-slate-700 font-mono">{formatDuration(media.duration)}</span>
-                                                        )}
-                                                        {!hasDuration && (
-                                                            <span className="text-[7px] text-orange-400 font-black">⚠ No duration</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                {alreadyInSchedule && (
-                                                    <span className="text-[7px] text-purple-400 font-black">✓</span>
-                                                )}
-                                            </div>
-                                        );
-                                    }) : (
-                                        <div className="col-span-2 py-8 text-center opacity-30">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.3em]">No media found</p>
-                                        </div>
-                                    )
-                                ) : (
-                                    adsList.length > 0 ? adsList.map(ad => {
-                                        const alreadyInSchedule = schedule.some(s => s.ad_id === ad.id);
-
-                                        return (
-                                            <div
-                                                key={ad.id}
-                                                onClick={() => addToSchedule(ad.id, 'ad')}
-                                                className="bg-orange-500/5 border border-orange-500/10 hover:border-orange-500/40 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all group"
-                                            >
-                                                <div className="w-10 h-10 rounded-lg bg-orange-600/10 flex items-center justify-center shrink-0">
-                                                    <svg className="w-5 h-5 text-orange-500/40 group-hover:text-orange-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M11 5.882V19.297A1.71 1.71 0 018.676 20.825L4.241 17.5H1.75C0.784 17.5 0 16.716 0 15.75V9.25C0 8.284 0.784 7.5 1.75 7.5H4.241L8.676 4.175A1.71 1.71 0 0111 5.882Z" /></svg>
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <span className="text-[10px] font-black uppercase text-slate-400 group-hover:text-white truncate block">{ad.title}</span>
-                                                    {ad.duration ? (
-                                                        <span className="text-[7px] text-orange-500/60 uppercase font-bold">{ad.duration}s Ad Clip</span>
-                                                    ) : (
-                                                        <span className="text-[7px] text-orange-400 font-black">⚠ No duration</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    }) : (
-                                        <div className="col-span-2 py-8 text-center opacity-30">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.3em]">No ads available</p>
-                                            <p className="text-[9px] text-slate-700 mt-1">Create ads in Revenue Control</p>
-                                        </div>
-                                    )
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Broadcast Controls */}
-                        <div className="mt-10 pt-8 border-t border-white/5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                                {/* Stats */}
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-3 gap-3 md:gap-4">
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                            <span className="text-lg font-black text-white">{formatDuration(totalDuration)}</span>
-                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Total Loop</p>
-                                        </div>
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                            <span className="text-lg font-black text-purple-400">{mediaCount}</span>
-                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Media</p>
-                                        </div>
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-center">
-                                            <span className="text-lg font-black text-orange-400">{adCount}</span>
-                                            <p className="text-[8px] font-black uppercase text-slate-600 mt-1">Ads</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                            <p className="text-[8px] font-black uppercase text-slate-600">Live Viewers</p>
-                                            <span className="text-2xl font-black text-emerald-400">{liveViewers}</span>
-                                            {realtimeError && (
-                                                <p className="text-[8px] font-mono text-slate-500 mt-2">{realtimeError}</p>
-                                            )}
-                                        </div>
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                            <p className="text-[8px] font-black uppercase text-slate-600">Current Segment</p>
-                                            {liveMetrics ? (
-                                                <div className="mt-1">
-                                                    <span className="text-[10px] font-black uppercase text-white block truncate">{liveMetrics.title}</span>
-                                                    <span className={`text-[8px] font-black uppercase ${liveMetrics.isAd ? 'text-orange-400' : 'text-purple-400'}`}>
-                                                        {liveMetrics.isAd ? 'AD' : 'MEDIA'} â€¢ #{liveMetrics.index + 1}
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-[9px] text-slate-500">No signal</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                        <p className="text-[8px] font-black uppercase text-slate-600">Segment Time</p>
-                                        {liveMetrics ? (
-                                            <div className="flex items-center justify-between mt-2">
-                                                <span className="text-[10px] font-mono text-white">{formatDuration(liveMetrics.segmentElapsed)}</span>
-                                                <div className="flex-1 mx-3 h-1 bg-white/10 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-purple-500"
-                                                        style={{ width: `${Math.min((liveMetrics.segmentElapsed / Math.max(liveMetrics.segmentDuration, 1)) * 100, 100)}%` }}
-                                                    />
-                                                </div>
-                                                <span className="text-[10px] font-mono text-slate-400">-{formatDuration(liveMetrics.segmentRemaining)}</span>
-                                            </div>
-                                        ) : (
-                                            <span className="text-[9px] text-slate-500">Awaiting live signal</span>
-                                        )}
-                                    </div>
-
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-3 h-3 rounded-full ${selectedChannel.is_active ? 'bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse' : 'bg-red-400'}`} />
-                                            <span className={`text-sm font-black uppercase tracking-widest ${selectedChannel.is_active ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                {selectedChannel.is_active
-                                                    ? selectedChannel.scheduled_start_time
-                                                        ? 'SCHEDULED'
-                                                        : 'LIVE & BROADCASTING'
-                                                    : 'OFFLINE / STANDBY'
-                                                }
-                                            </span>
-                                        </div>
-                                        {selectedChannel.live_started_at && selectedChannel.is_active && (
-                                            <p className="text-[8px] font-mono text-slate-500 mt-2">
-                                                Started: {new Date(selectedChannel.live_started_at).toLocaleString()}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Controls */}
-                                <div className="space-y-4">
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                        <div className="flex items-center justify-between gap-4">
-                                            <div>
-                                                <p className="text-[8px] font-black uppercase text-slate-600">Test Duration</p>
-                                                <p className="text-[9px] font-mono text-slate-500 mt-1">Forces 60s segments</p>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                role="switch"
-                                                aria-checked={testDurationEnabled}
-                                                onClick={toggleTestDuration}
-                                                className={`relative inline-flex h-7 w-14 items-center rounded-full border transition-colors ${testDurationEnabled ? 'bg-emerald-600/80 border-emerald-500/60' : 'bg-white/5 border-white/10'}`}
-                                            >
-                                                <span
-                                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${testDurationEnabled ? 'translate-x-7' : 'translate-x-1'}`}
-                                                />
-                                            </button>
-                                        </div>
-                                        <div className="mt-2 text-[8px] font-black uppercase tracking-widest">
-                                            <span className={testDurationEnabled ? 'text-emerald-400' : 'text-slate-500'}>
-                                                {testDurationEnabled ? 'ON' : 'OFF'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-                                        <label className="text-[8px] font-black uppercase text-slate-600 mb-2 block">Schedule Start Time</label>
-                                        <input
-                                            type="datetime-local"
-                                            defaultValue={selectedChannel.scheduled_start_time ? toLocalInputValue(selectedChannel.scheduled_start_time) : ''}
-                                            onChange={(e) => {
-                                                if (e.target.value) {
-                                                    handleScheduleLive(e.target.value);
-                                                } else {
-                                                    supabase.from('virtual_channels').upsert({
-                                                        id: selectedChannel.id,
-                                                        scheduled_start_time: null
-                                                    }, { onConflict: 'id' }).then(() => fetchData());
-                                                }
-                                            }}
-                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] text-white focus:outline-none focus:border-purple-500 font-mono"
-                                        />
-                                    </div>
-
-                                    <div className="flex flex-col sm:flex-row gap-3">
-                                        <button
-                                            onClick={() => selectedChannel && fetchSchedule(selectedChannel.id)}
-                                            className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-slate-300 transition-all"
-                                        >
-                                            Refresh Schedule
-                                        </button>
-                                        {processing === 'Auto-calculating durations...' && (
-                                            <div className="flex-1 py-3 bg-purple-600/20 border border-purple-500/30 rounded-2xl text-center text-[9px] font-black uppercase tracking-[0.2em] text-purple-300">
-                                                Auto‑Calc Running…
-                                            </div>
-                                        )}
-                                        <button
-                                            onClick={backfillMissingDurations}
-                                            disabled={processing !== null}
-                                            className="flex-1 py-3 bg-orange-600/80 hover:bg-orange-600 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white transition-all disabled:opacity-50"
-                                        >
-                                            Auto-Calc Durations
-                                        </button>
-                                        <button
-                                            onClick={saveDurationsToDb}
-                                            disabled={isSavingDurations || schedule.length === 0}
-                                            className="flex-1 py-3 bg-emerald-600/80 hover:bg-emerald-600 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white transition-all disabled:opacity-50"
-                                        >
-                                            {isSavingDurations ? 'Saving...' : 'Save Durations'}
-                                        </button>
-                                        <button
-                                            onClick={() => setShowResyncConfirm(true)}
-                                            className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white transition-all"
-                                        >
-                                            Resync Start
-                                        </button>
-                                    </div>
-                                    {durationBackfillFailedCount > 0 && (
-                                        <div className="mt-3 flex items-center justify-between gap-3 bg-black/40 border border-orange-500/20 rounded-2xl px-4 py-3">
-                                            <p className="text-[9px] font-mono text-orange-400">
-                                                {durationBackfillFailedCount} item(s) failed duration fetch
-                                            </p>
-                                            <button
-                                                onClick={() => selectedChannel && backfillMissingDurations()}
-                                                disabled={processing !== null}
-                                                className="px-3 py-2 bg-orange-600/30 hover:bg-orange-600/50 border border-orange-500/30 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] text-orange-200 disabled:opacity-50"
-                                            >
-                                                Retry
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    <div className="flex flex-col sm:flex-row gap-3">
-                                        {selectedChannel.is_active ? (
-                                            <button
-                                                onClick={handleGoOffline}
-                                                disabled={processing !== null}
-                                                className="flex-1 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-600/50 rounded-2xl font-black uppercase text-xs tracking-[0.2em] text-white transition-all shadow-2xl shadow-red-900/20 flex items-center justify-center gap-3"
-                                            >
-                                                <div className="w-2 h-2 bg-white rounded-full" />
-                                                Go Offline
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={handleGoLive}
-                                                disabled={schedule.length === 0 || processing !== null || missingDurationCount > 0}
-                                                className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/30 disabled:cursor-not-allowed rounded-2xl font-black uppercase text-xs tracking-[0.2em] text-white transition-all shadow-2xl shadow-emerald-900/20 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
-                                            >
-                                                {processing ? (
-                                                    <>
-                                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                        {processing}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                                                        Go Live Now
-                                                    </>
-                                                )}
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    {schedule.length === 0 && !selectedChannel.is_active && (
-                                        <p className="text-[9px] text-red-400/60 font-mono text-center">Add at least one media item to go live</p>
-                                    )}
-
-                                    {missingDurationCount > 0 && (
-                                        <div className="text-center space-y-2">
-                                            <p className="text-[9px] text-orange-400/80 font-mono">⚠ {missingDurationCount} item(s) missing duration</p>
-                                            <button
-                                                onClick={() => setShowMissingReport(true)}
-                                                className="text-[9px] font-black uppercase tracking-widest text-orange-400 hover:text-orange-300 transition-all"
-                                            >
-                                                View Missing Report
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
 
-            {/* Create Channel Modal */}
-            {isCreating && (
-                <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="w-full max-w-sm bg-[#0f172a] border border-white/10 rounded-[40px] p-10 shadow-2xl">
-                        <h2 className="text-xl font-black uppercase tracking-widest text-white mb-8">New Frequency</h2>
-                        <form onSubmit={handleCreateChannel} className="space-y-6">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Channel Name</label>
-                                <input name="name" className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white text-sm focus:outline-none focus:border-purple-500/50" placeholder="KAIRO_LIVE_01" required />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Description (Optional)</label>
-                                <input name="description" className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white text-sm focus:outline-none focus:border-purple-500/50" placeholder="24/7 Movie Marathon" />
-                            </div>
-                            <div className="flex gap-4 pt-4">
-                                <button type="button" onClick={() => setIsCreating(false)} className="flex-1 py-4 bg-white/5 rounded-2xl font-black uppercase text-[10px] text-slate-500 hover:text-white transition-all">Abort</button>
-                                <button type="submit" className="flex-1 py-4 bg-purple-600 rounded-2xl font-black uppercase text-[10px] text-white hover:bg-purple-500 transition-all">Initialize</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
+            {/* Modals */}
             {showMissingReport && (
-                <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="w-full max-w-2xl bg-[#0f172a] border border-white/10 rounded-[32px] p-6 shadow-2xl">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-black uppercase tracking-widest text-white">Missing Duration Report</h3>
-                            <button
-                                onClick={() => setShowMissingReport(false)}
-                                className="px-3 py-1.5 bg-white/5 rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all"
-                            >
-                                Close
-                            </button>
-                        </div>
-                        <div className="max-h-[420px] overflow-y-auto no-scrollbar space-y-2">
-                            {getMissingDurationItems().map(item => (
-                                <div key={item.id} className="bg-black/40 border border-white/5 rounded-xl p-3">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase text-white truncate">{item.title}</p>
-                                            <p className="text-[8px] text-slate-500 font-mono truncate">{item.url || 'Missing URL'}</p>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${item.type === 'AD' ? 'bg-orange-600/20 text-orange-400' : 'bg-purple-600/20 text-purple-400'}`}>
-                                                {item.type}
-                                            </span>
-                                            <button
-                                                onClick={() => retryDurationForItem(item)}
-                                                disabled={!item.url || processing !== null}
-                                                className="px-2 py-1 text-[8px] font-black uppercase tracking-widest rounded bg-white/5 border border-white/10 text-slate-300 hover:text-white disabled:opacity-40"
-                                            >
-                                                Retry
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            {getMissingDurationItems().length === 0 && (
-                                <div className="py-10 text-center text-[9px] text-slate-500">All items have durations.</div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                <MissingDurationReport
+                    items={getMissingDurationItems()}
+                    onClose={() => setShowMissingReport(false)}
+                    onRetry={retryDurationForItem}
+                    isProcessing={processing !== null}
+                />
             )}
 
             {showResyncConfirm && (
-                <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="w-full max-w-md bg-[#0f172a] border border-white/10 rounded-[32px] p-6 shadow-2xl">
-                        <h3 className="text-sm font-black uppercase tracking-widest text-white mb-3">Force Resync Start</h3>
-                        <p className="text-[10px] text-slate-400 font-mono mb-6">
-                            This resets the live start time for all viewers and will desync anyone currently watching.
-                        </p>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowResyncConfirm(false)}
-                                className="flex-1 py-3 bg-white/5 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-slate-400"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    setShowResyncConfirm(false);
-                                    await forceResyncStart();
-                                }}
-                                className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black uppercase text-[9px] tracking-[0.2em] text-white"
-                            >
-                                Force Resync
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <ResyncConfirm
+                    onClose={() => setShowResyncConfirm(false)}
+                    onConfirm={async () => {
+                        setShowResyncConfirm(false);
+                        await forceResyncStart();
+                    }}
+                />
             )}
         </div>
     );
 };
 
 export default VirtualChannelManager;
-
-
-
-
-
-
-

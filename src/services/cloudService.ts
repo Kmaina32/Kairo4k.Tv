@@ -24,20 +24,31 @@ export const cloudService = {
     }
   },
 
-  // DB: Fetch stats (Simulated or Real from system_metrics)
+  // DB: Fetch stats (Real from database)
   async getSystemStatus(): Promise<CloudStats> {
     try {
-      // In a real project, we'd query a 'metrics' view or table
-      // const { data } = await supabase.from('system_metrics').select('*').single();
+      const startTime = Date.now();
+
+      // Perform parallel counts for efficiency
+      const [
+        { count: userCount },
+        { count: channelCount }
+      ] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('virtual_channels').select('id', { count: 'exact', head: true })
+      ]);
+
+      const latency = Date.now() - startTime;
 
       return {
-        globalUsers: 1042,
-        activeSignals: 12450,
-        serverLoad: 12,
+        globalUsers: userCount || 0,
+        activeSignals: channelCount || 0,
+        serverLoad: Math.floor(Math.random() * 15) + 5, // This is still simulated as it depends on server metrics
         dbStatus: 'connected',
-        postgresLatency: 45 // ms
+        postgresLatency: latency
       };
     } catch (e) {
+      console.error('[Supabase Error] getSystemStatus:', e);
       return {
         globalUsers: 0,
         activeSignals: 0,

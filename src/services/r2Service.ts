@@ -9,7 +9,7 @@ const R2_SECRET_ACCESS_KEY = import.meta.env.VITE_CF_SECRET_ACCESS_KEY || '';
 const R2_BUCKET_NAME = import.meta.env.VITE_CF_BUCKET_NAME || '';
 
 const R2_ENDPOINT = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-const PUBLIC_URL = import.meta.env.VITE_CF_PUBLIC_URL || 'https://pub-a84b309a59b0432d9479ce0138fe01dd.r2.dev';
+const PUBLIC_URL = import.meta.env.VITE_CF_PUBLIC_URL || 'https://pub-d51716508a97e95180a31909e42b26b1.r2.dev';
 
 // Initialize S3 Client for R2
 const r2Client = new S3Client({

@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { CLOUDFLARE_BASE_URL } from '../../constants';
 
 interface MediaModalProps {
     onClose: () => void;
@@ -33,7 +33,6 @@ const MediaModal = ({ onClose, onSuccess, initialData, parentId }: MediaModalPro
             return;
         }
 
-        const CLOUDFLARE_BASE_URL = 'https://pub-a84b309a59b0432d9479ce0138fe01dd.r2.dev/';
         let finalStreamUrl = streamUrl;
 
         // Auto-prepend Cloudflare URL if only filename is provided

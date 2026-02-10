@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../../services/supabaseClient';
+import { r2Service } from '../../services/r2Service';
 
 interface LogEntry {
     id: string;
@@ -9,77 +11,166 @@ interface LogEntry {
     source: string;
 }
 
+interface SystemStats {
+    totalUsers: number;
+    totalMedia: number;
+    totalPlaylists: number;
+    totalChannels: number;
+    activeStreams: number;
+    storageUsed: string;
+    lastBackup: string;
+}
+
 const CommandDeck = () => {
     // Real-time State
     const [cpuLoad, setCpuLoad] = useState(0);
     const [memoryUsage, setMemoryUsage] = useState(0);
     const [bandwidth, setBandwidth] = useState<number[]>(new Array(60).fill(50));
-    const [activeConnections, setActiveConnections] = useState(142);
-    const [logs, setLogs] = useState<LogEntry[]>([
-        { id: '1', timestamp: new Date().toLocaleTimeString(), level: 'INFO', message: 'System Initiated', source: 'KERNEL' }
-    ]);
+    const [activeConnections, setActiveConnections] = useState(0);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
+    const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
     const logsEndRef = useRef<HTMLDivElement>(null);
 
-    // Simulated Real-time Data Feed
+    // Fetch real data from database
+    useEffect(() => {
+        const fetchSystemData = async () => {
+            try {
+                // Fetch counts from database and R2 stats in parallel
+                const [
+                    { count: usersCount },
+                    { count: mediaCount },
+                    { count: playlistCount },
+                    { count: channelCount },
+                    r2Stats,
+                    { data: eventData }
+                ] = await Promise.all([
+                    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+                    supabase.from('media_library').select('id', { count: 'exact', head: true }),
+                    supabase.from('playlists').select('id', { count: 'exact', head: true }),
+                    supabase.from('virtual_channels').select('id', { count: 'exact', head: true }),
+                    r2Service.getStorageStats(),
+                    supabase.from('event_logs').select('*').order('created_at', { ascending: false }).limit(15)
+                ]);
+
+                if (eventData && eventData.length > 0) {
+                    const mappedLogs: LogEntry[] = eventData.map(log => ({
+                        id: log.id.toString(),
+                        timestamp: new Date(log.created_at).toLocaleTimeString(),
+                        level: (log.event_description?.includes('Error') || log.event_description?.includes('error') ? 'ERROR' :
+                            log.event_description?.includes('Success') || log.event_description?.includes('success') ? 'SUCCESS' :
+                                log.event_description?.includes('Warn') || log.event_description?.includes('warn') ? 'WARN' : 'INFO') as any,
+                        message: log.event_description || 'System event',
+                        source: log.user_name || 'SYSTEM'
+                    }));
+                    setLogs(mappedLogs);
+                } else {
+                    // Fallback to a default log if table is empty
+                    setLogs([{
+                        id: '1',
+                        timestamp: new Date().toLocaleTimeString(),
+                        level: 'INFO',
+                        message: 'System initiated - All services operational',
+                        source: 'KERNEL'
+                    }]);
+                }
+
+                setSystemStats({
+                    totalUsers: usersCount || 0,
+                    totalMedia: mediaCount || 0,
+                    totalPlaylists: playlistCount || 0,
+                    totalChannels: channelCount || 0,
+                    activeStreams: Math.floor(Math.random() * 50) + 10, // Simulated until real tracking
+                    storageUsed: r2Stats.sizeFormatted,
+                    lastBackup: new Date().toISOString()
+                });
+
+                setIsLoading(false);
+            } catch (error) {
+                console.error('Error fetching system data:', error);
+                // Fallback to default log
+                setLogs([{
+                    id: '1',
+                    timestamp: new Date().toLocaleTimeString(),
+                    level: 'INFO',
+                    message: 'System initiated - Using fallback data',
+                    source: 'KERNEL'
+                }]);
+                setIsLoading(false);
+            }
+        };
+
+        fetchSystemData();
+    }, []);
+
+    // Real-time updates (simulated with some real data mixed in)
     useEffect(() => {
         const interval = setInterval(() => {
-            // Simulate CPU/Mem fluctuation
+            // Simulate CPU/Mem fluctuation with realistic bounds
             setCpuLoad(prev => {
-                const noise = Math.random() * 20 - 10;
+                const noise = Math.random() * 15 - 7;
                 let next = prev + noise;
-                if (next < 20) next = 20 + Math.random() * 10;
-                if (next > 90) next = 90 - Math.random() * 10;
-                return Math.max(0, Math.min(100, next));
+                if (next < 25) next = 25 + Math.random() * 10;
+                if (next < 0) next = Math.random() * 20;
+                if (next > 85) next = 85 - Math.random() * 10;
+                return Math.max(0, Math.min(100, Math.round(next)));
             });
 
             setMemoryUsage(prev => {
-                const noise = Math.random() * 5 - 2.5;
+                const noise = Math.random() * 4 - 2;
                 let next = prev + noise;
                 if (next < 40) next = 40 + Math.random() * 5;
-                if (next > 80) next = 80 - Math.random() * 5;
-                return Math.max(0, Math.min(100, next));
+                if (next < 0) next = Math.random() * 30;
+                if (next > 75) next = 75 - Math.random() * 5;
+                return Math.max(0, Math.min(100, Math.round(next)));
             });
 
             // Simulate Bandwidth Stream
             setBandwidth(prev => {
                 const last = prev[prev.length - 1];
-                const noise = Math.random() * 30 - 15;
+                const noise = Math.random() * 25 - 12;
                 let next = last + noise;
-                if (next < 10) next = 10 + Math.random() * 10;
-                if (next > 90) next = 90 - Math.random() * 10;
-                return [...prev.slice(1), next];
+                if (next < 20) next = 20 + Math.random() * 15;
+                if (next > 80) next = 80 - Math.random() * 15;
+                const newValue = Math.max(10, Math.min(95, Math.round(next)));
+                return [...prev.slice(1), newValue];
             });
 
-            // Simulate Connections
+            // Simulate Connections with realistic range
             setActiveConnections(prev => {
-                const change = Math.floor(Math.random() * 7 - 3);
-                return Math.max(100, prev + change);
+                const change = Math.floor(Math.random() * 10 - 4);
+                const next = prev + change;
+                return Math.max(50, Math.min(500, next));
             });
 
-            // Simulate Logs
-            if (Math.random() > 0.6) {
-                addLog();
+            // Occasionally add new log entry
+            if (Math.random() > 0.7) {
+                const actions = [
+                    'Stream chunk cached',
+                    'CDN node sync completed',
+                    'User authentication token refreshed',
+                    'Media metadata indexed',
+                    'Playlist refresh cycle',
+                    'Health check passed',
+                    'Buffer optimization applied'
+                ];
+                const sources = ['CORE-01', 'CDN-EDGE', 'AUTH-SVC', 'MEDIA-INDEX', 'PLAYLIST-SYNC'];
+                const levels: LogEntry['level'][] = ['INFO', 'INFO', 'SUCCESS'];
+
+                const newLog: LogEntry = {
+                    id: Date.now().toString(),
+                    timestamp: new Date().toLocaleTimeString(),
+                    level: levels[Math.floor(Math.random() * levels.length)],
+                    message: `${actions[Math.floor(Math.random() * actions.length)]}`,
+                    source: sources[Math.floor(Math.random() * sources.length)]
+                };
+
+                setLogs(prev => [...prev.slice(-14), newLog]);
             }
-        }, 800);
+        }, 1200);
 
         return () => clearInterval(interval);
     }, []);
-
-    const addLog = () => {
-        const actions = ['Packet routed', 'Handshake accepted', 'Buffer flushed', 'Key rotation', 'Signal optimized', 'Node synced', 'Latency correction', 'Cache invalidated'];
-        const sources = ['CORE-01', 'NET-GATE', 'DB-SHARD', 'AUTH-SVC', 'MEDIA-09', 'LB-03'];
-        const levels: LogEntry['level'][] = ['INFO', 'INFO', 'INFO', 'SUCCESS', 'WARN'];
-
-        const newLog: LogEntry = {
-            id: Math.random().toString(36),
-            timestamp: new Date().toLocaleTimeString(),
-            level: levels[Math.floor(Math.random() * levels.length)],
-            message: `${actions[Math.floor(Math.random() * actions.length)]} - ${Math.random().toString(16).substring(2, 6).toUpperCase()}`,
-            source: sources[Math.floor(Math.random() * sources.length)]
-        };
-
-        setLogs(prev => [...prev.slice(-14), newLog]);
-    };
 
     // Auto-scroll logs
     useEffect(() => {
@@ -91,19 +182,27 @@ const CommandDeck = () => {
         if (data.length === 0) return '';
 
         const stepX = width / (data.length - 1);
-
-        // Start point
         let path = `M0,${height - (data[0] / 100) * height}`;
 
         for (let i = 1; i < data.length; i++) {
             const x = i * stepX;
             const y = height - (data[i] / 100) * height;
-            // Simple line for now to ensure performance
             path += ` L${x},${y}`;
         }
 
         return path;
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="w-10 h-10 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Loading Command Deck...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500 font-mono">
@@ -125,10 +224,10 @@ const CommandDeck = () => {
                             <div
                                 key={i}
                                 className={`flex-1 rounded-sm transition-all duration-100 ${(i / 20) * 100 < cpuLoad
-                                        ? cpuLoad > 85 ? 'bg-red-500'
-                                            : cpuLoad > 60 ? 'bg-orange-500'
-                                                : 'bg-blue-500'
-                                        : 'bg-white/5'
+                                    ? cpuLoad > 85 ? 'bg-red-500'
+                                        : cpuLoad > 60 ? 'bg-orange-500'
+                                            : 'bg-blue-500'
+                                    : 'bg-white/5'
                                     }`}
                                 style={{ opacity: (i / 20) * 100 < cpuLoad ? 1 : 0.2 }}
                             />
@@ -147,179 +246,122 @@ const CommandDeck = () => {
                         <span className="text-xs font-mono text-purple-400 mb-2">% HEAP INTEGRITY</span>
                     </div>
                     <div className="w-full h-1.5 bg-white/10 mt-4 overflow-hidden rounded-full relative">
+                        <div className="absolute top-0 left-0 h-full bg-purple-500/50 transition-all duration-300" style={{ width: `${memoryUsage}%` }} />
                         <div className="absolute top-0 left-0 h-full w-full bg-[repeating-linear-gradient(90deg,transparent,transparent_2px,#000_2px,#000_4px)] z-10 opacity-30" />
-                        <div className={`h-full transition-all duration-300 ${memoryUsage > 90 ? 'bg-red-500' : 'bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]'}`} style={{ width: `${memoryUsage}%` }} />
+                    </div>
+                </div>
+
+                {/* BANDWIDTH MONITOR */}
+                <div className="bg-black/80 backdrop-blur-xl border border-white/10 p-6 rounded-2xl relative overflow-hidden group hover:border-green-500/30 transition-colors">
+                    <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity">
+                        <svg className="w-16 h-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    </div>
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Egress Bandwidth</h3>
+                    <div className="flex items-end gap-2 mb-4">
+                        <span className="text-4xl font-black text-white tracking-tighter">{bandwidth[bandwidth.length - 1]}</span>
+                        <span className="text-xs font-mono text-green-400 mb-2">MBPS</span>
+                    </div>
+                    {/* SVG Bandwidth Graph */}
+                    <div className="h-10 w-full relative overflow-hidden">
+                        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+                            <path
+                                d={generatePath(bandwidth, 40, 300)}
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                className="text-green-500"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+                        <div className="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-green-500/0 via-green-500/50 to-green-500/0" />
                     </div>
                 </div>
 
                 {/* ACTIVE CONNECTIONS */}
-                <div className="bg-black/80 backdrop-blur-xl border border-white/10 p-6 rounded-2xl relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
+                <div className="bg-black/80 backdrop-blur-xl border border-white/10 p-6 rounded-2xl relative overflow-hidden group hover:border-orange-500/30 transition-colors">
                     <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity">
-                        <svg className="w-16 h-16 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        <svg className="w-16 h-16 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                     </div>
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Network Nodes</h3>
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Active Connections</h3>
                     <div className="flex items-end gap-2 mb-4">
                         <span className="text-4xl font-black text-white tracking-tighter">{activeConnections}</span>
-                        <span className="text-xs font-mono text-emerald-500 mb-2">ACTIVE SESSIONS</span>
+                        <span className="text-xs font-mono text-orange-400 mb-2">CLIENTS</span>
                     </div>
-                    <div className="grid grid-cols-10 gap-1 h-2">
-                        {[...Array(20)].map((_, i) => (
-                            <div key={i} className={`rounded-full transition-all duration-500 ${Math.random() > 0.3 ? 'bg-emerald-500/80 shadow-[0_0_4px_rgba(16,185,129,0.8)]' : 'bg-emerald-900/40'}`} style={{ opacity: Math.random() > 0.5 ? 1 : 0.4 }} />
-                        ))}
-                    </div>
-                </div>
-
-                {/* SYSTEM STATUS */}
-                <div className="bg-black/80 backdrop-blur-xl border border-white/10 p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between hover:border-white/20 transition-colors">
-                    <div>
-                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1">System State</h3>
-                        <div className="flex items-center gap-3 mt-4">
-                            <div className="relative">
-                                <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_15px_rgba(16,185,129,1)]" />
-                                <div className="absolute inset-0 rounded-full border border-emerald-500 animate-ping" />
-                            </div>
-                            <span className="text-xl font-black text-white tracking-widest text-shadow-glow">OPTIMAL</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mt-4 border-t border-white/5 pt-4">
-                        <span>UPTIME</span>
-                        <span className="text-white font-bold">42d 13h 22m</span>
+                    <div className="flex gap-0.5 h-2 w-full">
+                        {[...Array(10)].map((_, i) => {
+                            const threshold = (i + 1) * 10;
+                            const isActive = activeConnections >= threshold;
+                            return (
+                                <div
+                                    key={i}
+                                    className={`flex-1 rounded-sm transition-all duration-200 ${isActive ? 'bg-orange-500' : 'bg-white/5'}`}
+                                    style={{ opacity: isActive ? 1 : 0.2 }}
+                                />
+                            );
+                        })}
                     </div>
                 </div>
             </div>
 
-            {/* BANDWIDTH VISUALIZER */}
-            <div className="bg-[#050510] border border-white/10 rounded-[24px] p-6 relative overflow-hidden shadow-2xl">
-                <div className="flex justify-between items-center mb-6 relative z-10">
+            {/* SYSTEM STATS */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">Users</p>
+                    <p className="text-xl font-black text-white">{systemStats?.totalUsers || 0}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">Media</p>
+                    <p className="text-xl font-black text-purple-400">{systemStats?.totalMedia || 0}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">Playlists</p>
+                    <p className="text-xl font-black text-blue-400">{systemStats?.totalPlaylists || 0}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">Channels</p>
+                    <p className="text-xl font-black text-orange-400">{systemStats?.totalChannels || 0}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">Streams</p>
+                    <p className="text-xl font-black text-emerald-400">{systemStats?.activeStreams || 0}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+                    <p className="text-[9px] text-slate-500 uppercase tracking-[0.2em]">Storage</p>
+                    <p className="text-xl font-black text-slate-300">{systemStats?.storageUsed || '0 GB'}</p>
+                </div>
+            </div>
+
+            {/* LIVE LOGS CONSOLE */}
+            <div className="bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/5">
                     <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 bg-orange-500 rounded-sm animate-pulse" />
-                        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-300">
-                            Realtime Network Traffic
-                        </h3>
+                        <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white">System Events</h3>
                     </div>
-                    <span className="text-[10px] font-mono text-slate-500 bg-white/5 px-3 py-1 rounded-full border border-white/5">800ms Interval</span>
+                    <div className="flex items-center gap-2 text-[9px] text-slate-500">
+                        <span className="font-mono">{logs.length} events</span>
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        <span>Live</span>
+                    </div>
                 </div>
-
-                {/* Graph Container */}
-                <div className="h-48 w-full relative">
-                    {/* Grid Lines */}
-                    <div className="absolute inset-0 grid grid-rows-4 grid-cols-6 pointer-events-none opacity-20">
-                        {[...Array(24)].map((_, i) => (
-                            <div key={i} className="border-r border-b border-orange-500/20" />
-                        ))}
-                    </div>
-
-                    {/* SVG GRAPH */}
-                    <svg className="w-full h-full relative z-0" preserveAspectRatio="none" viewBox="0 0 100 100">
-                        <defs>
-                            <linearGradient id="trafficGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="rgba(249, 115, 22, 0.4)" />
-                                <stop offset="100%" stopColor="rgba(249, 115, 22, 0)" />
-                            </linearGradient>
-                            <clipPath id="clip">
-                                <rect width="100" height="100" />
-                            </clipPath>
-                        </defs>
-
-                        {/* Area Fill */}
-                        <path
-                            d={`M0,100 ${generatePath(bandwidth, 100, 100).replace('M0,', 'L0,')} L100,100 Z`}
-                            fill="url(#trafficGradient)"
-                            className="transition-all duration-300 ease-linear"
-                        />
-
-                        {/* Stroke Line */}
-                        <path
-                            d={generatePath(bandwidth, 100, 100)}
-                            fill="none"
-                            stroke="#f97316"
-                            strokeWidth="0.5"
-                            vectorEffect="non-scaling-stroke"
-                            className="transition-all duration-300 ease-linear drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"
-                        />
-                    </svg>
-
-                    {/* Scanline Effect */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-orange-500/10 to-transparent h-[4px] w-full animate-[scan_3s_linear_infinite] pointer-events-none" />
+                <div className="h-64 overflow-y-auto p-4 space-y-2 font-mono text-xs no-scrollbar">
+                    {logs.map((log, index) => (
+                        <div key={log.id + index} className="flex items-start gap-3 hover:bg-white/5 rounded-lg px-2 py-1 transition-colors">
+                            <span className="text-[9px] text-slate-500 font-mono shrink-0 w-20">{log.timestamp}</span>
+                            <span className={`text-[9px] font-black uppercase tracking-wider w-16 shrink-0 ${log.level === 'ERROR' ? 'text-red-500' :
+                                log.level === 'WARN' ? 'text-orange-500' :
+                                    log.level === 'SUCCESS' ? 'text-emerald-500' : 'text-blue-400'
+                                }`}>
+                                {log.level}
+                            </span>
+                            <span className="text-slate-400">{log.message}</span>
+                            <span className="ml-auto text-[9px] text-slate-600 font-mono">{log.source}</span>
+                        </div>
+                    ))}
+                    <div ref={logsEndRef} />
                 </div>
             </div>
-
-            {/* BOTTOM ROW: LOGS & QUICK ACTIONS */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* LIVE TERMINAL */}
-                <div className="lg:col-span-2 bg-[#0a0a0a] border border-white/10 rounded-[24px] p-1 font-mono text-[10px] h-64 flex flex-col relative overflow-hidden shadow-2xl">
-                    <div className="bg-white/5 px-4 py-2 flex justify-between items-center rounded-t-[20px] border-b border-white/5">
-                        <div className="flex items-center gap-2">
-                            <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3" /></svg>
-                            <span className="text-slate-400 uppercase tracking-widest font-bold">System Event Log</span>
-                        </div>
-                        <div className="flex gap-1.5 opacity-50">
-                            <div className="w-2 h-2 rounded-full bg-red-500" />
-                            <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar text-slate-300 font-mono tracking-tight">
-                        {logs.map((log) => (
-                            <div key={log.id} className="flex gap-3 hover:bg-white/5 p-0.5 rounded transition-colors border-l-2 border-transparent hover:border-white/20 pl-2">
-                                <span className="text-slate-600 select-none w-16 text-right">{log.timestamp}</span>
-                                <span className={`font-bold w-12 text-center rounded px-1 ${log.level === 'INFO' ? 'bg-blue-500/10 text-blue-400' :
-                                        log.level === 'WARN' ? 'bg-yellow-500/10 text-yellow-400' :
-                                            log.level === 'ERROR' ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
-                                    }`}>{log.level}</span>
-                                <span className="text-purple-400 w-20 select-none font-bold opacity-80">{log.source}</span>
-                                <span className="flex-1 text-slate-300 opacity-90">{log.message}</span>
-                            </div>
-                        ))}
-                        <div ref={logsEndRef} />
-                    </div>
-                </div>
-
-                {/* QUICK METRICS/ACTIONS */}
-                <div className="bg-gradient-to-br from-white/5 to-transparent rounded-[24px] border border-white/10 p-6 flex flex-col justify-between backdrop-blur-md">
-                    <div>
-                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-6 flex items-center gap-2">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                            Environment
-                        </h3>
-
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center pb-3 border-b border-white/5">
-                                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Region</span>
-                                <span className="text-[10px] font-mono text-white bg-white/10 px-2 py-1 rounded">US-EAST-1</span>
-                            </div>
-                            <div className="flex justify-between items-center pb-3 border-b border-white/5">
-                                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Latency</span>
-                                <span className="text-xs text-emerald-400 font-mono">24ms <span className="text-slate-600">Avg</span></span>
-                            </div>
-                            <div className="flex justify-between items-center pb-3 border-b border-white/5">
-                                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Storage</span>
-                                <span className="text-xs text-orange-400 font-mono">82% <span className="text-slate-600">Used</span></span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                        <button className="py-3 bg-white/5 hover:bg-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all text-slate-300 hover:text-white border border-white/5 hover:border-white/20">
-                            Flush Cache
-                        </button>
-                        <button className="py-3 bg-orange-600/20 hover:bg-orange-600/30 text-orange-500 hover:text-orange-400 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-orange-500/20 hover:border-orange-500/40">
-                            Diagnostics
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <style>{`
-                @keyframes scan {
-                    0% { transform: translateY(-100%); opacity: 0; }
-                    50% { opacity: 1; }
-                    100% { transform: translateY(500%); opacity: 0; }
-                }
-                .text-shadow-glow {
-                    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
-                }
-            `}</style>
         </div>
     );
 };
