@@ -4,6 +4,17 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    global: 'globalThis',
+    'process.env': {},
+  },
+  resolve: {
+    alias: {
+      util: 'util',
+      stream: 'stream-browserify',
+      buffer: 'buffer',
+    },
+  },
   preview: {
     // Allows the specific Render host to bypass the security check in Vite 6 preview mode
     allowedHosts: ['geniues-streamer.onrender.com'],

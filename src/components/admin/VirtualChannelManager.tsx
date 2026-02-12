@@ -177,7 +177,8 @@ const VirtualChannelManager = ({
     const handleCreateChannel = async () => {
         setProcessing('Creating frequency...');
         try {
-            const newName = `NEW CHANNEL ${channels.length + 1}`;
+            const timestamp = new Date().getTime().toString().slice(-4);
+            const newName = `NEW CHANNEL ${channels.length + 1} (${timestamp})`;
             const { data, error } = await supabase
                 .from('virtual_channels')
                 .insert([{
@@ -505,12 +506,18 @@ const VirtualChannelManager = ({
     const autoBackfillMissingDurations = async (items: ScheduleItem[], channelId: string) => {
         if (testDurationEnabled) return;
         if (autoBackfillAttemptRef.current === channelId) return;
+
         const pending = items.filter(item => getItemDuration(item) <= 0);
         if (pending.length === 0) return;
+
         autoBackfillAttemptRef.current = channelId;
+        console.log(`[AutoCalc] Starting for channel ${channelId}, items: ${pending.length}`);
+
         setProcessing('Auto-calculating durations...');
         setDurationBackfillFailedCount(0);
         let failedCount = 0;
+        let foundAny = false;
+
         try {
             for (const item of pending) {
                 const url = resolveMediaUrl(item);
@@ -520,12 +527,23 @@ const VirtualChannelManager = ({
                 }
                 try {
                     const duration = await fetchDurationFromUrl(url);
-                    applyDurationOverride(item.id, duration, item.media_id, item.ad_id);
-                } catch {
+                    if (duration > 0) {
+                        applyDurationOverride(item.id, duration, item.media_id, item.ad_id);
+                        foundAny = true;
+                    } else {
+                        failedCount += 1;
+                    }
+                } catch (err) {
+                    console.warn(`[AutoCalc] Failed for ${item.id}:`, err);
                     failedCount += 1;
                 }
             }
-            await fetchSchedule(channelId);
+
+            // Do NOT re-fetch schedule here as it overwrites local unsaved state.
+            // User can manually save via the "Save Durations" button which is now visible if we found any.
+            if (foundAny) {
+                setSuccess(`Found ${pending.length - failedCount} new durations. Click 'Save' to persist.`);
+            }
         } finally {
             if (failedCount > 0) {
                 setDurationBackfillFailedCount(failedCount);
@@ -539,7 +557,8 @@ const VirtualChannelManager = ({
         setIsSavingDurations(true);
         setError(null);
         try {
-            const payload = schedule.map(item => ({
+            // 1. Update channel_schedule
+            const schedulePayload = schedule.map(item => ({
                 id: item.id,
                 channel_id: selectedChannel.id,
                 order_index: item.order_index,
@@ -548,13 +567,37 @@ const VirtualChannelManager = ({
                 duration: getItemDuration(item)
             }));
 
-            const { error } = await supabase
+            const { error: scheduleError } = await supabase
                 .from('channel_schedule')
-                .upsert(payload, { onConflict: 'id' });
+                .upsert(schedulePayload, { onConflict: 'id' });
 
-            if (error) throw error;
-            setSuccess('Durations saved to database');
+            if (scheduleError) throw scheduleError;
+
+            // 2. Sync durations back to master libraries for reuse
+            const mediaUpdates = Array.from(new Map(
+                schedule
+                    .filter(item => item.media_id && getItemDuration(item) > 0)
+                    .map(item => [item.media_id, { id: item.media_id, duration: getItemDuration(item) }])
+            ).values());
+
+            const adUpdates = Array.from(new Map(
+                schedule
+                    .filter(item => item.ad_id && getItemDuration(item) > 0)
+                    .map(item => [item.ad_id, { id: item.ad_id, duration: getItemDuration(item) }])
+            ).values());
+
+            if (mediaUpdates.length > 0) {
+                const { error: mError } = await supabase.from('media_library').upsert(mediaUpdates, { onConflict: 'id' });
+                if (mError) console.warn('[SaveDurations] Media library sync failed:', mError);
+            }
+            if (adUpdates.length > 0) {
+                const { error: aError } = await supabase.from('ads_library').upsert(adUpdates, { onConflict: 'id' });
+                if (aError) console.warn('[SaveDurations] Ads library sync failed:', aError);
+            }
+
+            setSuccess('Durations saved globally');
         } catch (err: any) {
+            console.error('[SaveDurations] CRITICAL:', err);
             setError(err.message || 'Failed to save durations');
         } finally {
             setIsSavingDurations(false);
@@ -621,28 +664,36 @@ const VirtualChannelManager = ({
 
             const cleanup = () => {
                 if (timeoutId) window.clearTimeout(timeoutId);
+                video.pause();
+                video.src = "";
+                video.load();
                 video.remove();
             };
 
             video.preload = 'metadata';
             video.crossOrigin = 'anonymous';
             video.onloadedmetadata = () => {
-                const dur = Number.isFinite(video.duration) ? Math.round(video.duration) : 0;
+                const dur = video.duration;
+                if (Number.isFinite(dur) && dur > 0) {
+                    resolve(Math.round(dur));
+                } else {
+                    reject(new Error('Invalid duration reported by browser'));
+                }
                 cleanup();
-                if (dur > 0) resolve(dur);
-                else reject(new Error('Invalid duration'));
             };
-            video.onerror = () => {
+            video.onerror = (e) => {
+                console.error(`[BrowserVideo] Error loading ${url}:`, e);
+                reject(new Error('Failed to load metadata - source might be missing or CORS blocked'));
                 cleanup();
-                reject(new Error('Failed to load metadata'));
             };
 
             timeoutId = window.setTimeout(() => {
+                reject(new Error('Metadata timeout - network might be slow'));
                 cleanup();
-                reject(new Error('Metadata timeout'));
-            }, 15000);
+            }, 20000); // 20s timeout for slow R2 downloads
 
             video.src = url;
+            video.load(); // Explicitly trigger load
         });
     };
 
@@ -657,6 +708,7 @@ const VirtualChannelManager = ({
 
         setProcessing('Calculating durations...');
         setError(null);
+        let successCount = 0;
         try {
             for (const item of pending) {
                 const url = resolveMediaUrl(item);
@@ -664,19 +716,25 @@ const VirtualChannelManager = ({
 
                 try {
                     const duration = await fetchDurationFromUrl(url);
-                    applyDurationOverride(item.id, duration, item.media_id, item.ad_id);
+                    if (duration > 0) {
+                        applyDurationOverride(item.id, duration, item.media_id, item.ad_id);
+                        successCount++;
+                    }
                 } catch (e) {
-                    console.warn('Duration backfill failed for item', item.id, e);
+                    console.warn(`[ManualCalc] Failed for ${item.id}:`, e);
                 }
             }
 
-            fetchSchedule(selectedChannel.id);
-            setSuccess('Durations recalculated');
+            if (successCount > 0) {
+                setSuccess(`Successfully calculated ${successCount} durations. Don't forget to SAVE changes.`);
+            } else {
+                setError('Could not extract any durations automatically. Check source URLs.');
+            }
         } catch (err: any) {
             setError(err.message || 'Failed to recalculate durations');
         } finally {
             setProcessing(null);
-            setTimeout(() => { setSuccess(null); setError(null); }, 4000);
+            setTimeout(() => { setSuccess(null); setError(null); }, 5000);
         }
     };
 

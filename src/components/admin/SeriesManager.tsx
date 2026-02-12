@@ -1,649 +1,686 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { r2Service } from '../../services/r2Service';
-import { supabase } from '../../services/supabaseClient';
-import { CLOUDFLARE_BASE_URL } from '../../constants';
-import BrandedDialog from '../frontend/BrandedDialog';
+import React, { useState, useEffect } from 'react';
+import { contentService } from '../../services/contentService';
+import type { Series, Season, Episode, Genre, SeriesFormData, SeasonFormData, EpisodeFormData } from '../../types/content';
 
-interface MediaItem {
-    id: string;
-    title: string;
-    description: string;
-    category: string;
-    cover_url: string;
-    stream_url: string;
-    release_year: number;
-    genre: string;
-    parent_id?: string;
-    season_number?: number;
-    episode_number?: number;
-    is_active?: boolean;
-}
+const SeriesManager = () => {
+    const [series, setSeries] = useState<Series[]>([]);
+    const [selectedSeries, setSelectedSeries] = useState<Series | null>(null);
+    const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
+    const [genres, setGenres] = useState<Genre[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [view, setView] = useState<'list' | 'create-series' | 'manage-series' | 'create-season' | 'create-episode'>('list');
 
-interface SeriesManagerProps {
-    onClose: () => void;
-    onRefresh: () => void;
-}
-
-const getFullUrl = (url: string) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url;
-    return CLOUDFLARE_BASE_URL + url;
-};
-
-const SeriesManager = ({ onClose, onRefresh }: SeriesManagerProps) => {
-    const [series, setSeries] = useState<MediaItem[]>([]);
-    const [selectedSeries, setSelectedSeries] = useState<MediaItem | null>(null);
-    const [episodes, setEpisodes] = useState<MediaItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'list' | 'add' | 'edit'>('list');
-    const [editingEpisode, setEditingEpisode] = useState<MediaItem | null>(null);
-
-    // Episode form state
-    const [episodeForm, setEpisodeForm] = useState({
+    // Form states
+    const [seriesForm, setSeriesForm] = useState<SeriesFormData>({
         title: '',
         description: '',
+        status: 'ongoing',
+        genre_ids: [],
+        is_featured: false,
+        is_published: false
+    });
+
+    const [seasonForm, setSeasonForm] = useState<SeasonFormData>({
+        series_id: '',
         season_number: 1,
-        episode_number: 1,
-    });
-
-    const [isUploading, setIsUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [videoFile, setVideoFile] = useState<File | null>(null);
-    const [coverFile, setCoverFile] = useState<File | null>(null);
-    const videoInputRef = useRef<HTMLInputElement>(null);
-    const coverInputRef = useRef<HTMLInputElement>(null);
-
-    const [dialog, setDialog] = useState<{
-        isOpen: boolean;
-        title: string;
-        message: string;
-        type: 'info' | 'danger';
-        onConfirm: () => void;
-        hideCancel?: boolean;
-    }>({
-        isOpen: false,
         title: '',
-        message: '',
-        type: 'info',
-        onConfirm: () => { },
+        is_published: false
     });
 
-    const showDialog = (title: string, message: string, onConfirm?: () => void, type: 'info' | 'danger' = 'info', hideCancel = false) => {
-        setDialog({
-            isOpen: true,
-            title,
-            message,
-            onConfirm: onConfirm || (() => setDialog(d => ({ ...d, isOpen: false }))),
-            type,
-            hideCancel
-        });
-    };
+    const [episodeForm, setEpisodeForm] = useState<EpisodeFormData>({
+        series_id: '',
+        season_id: '',
+        episode_number: 1,
+        title: '',
+        video_url: '',
+        is_published: false
+    });
+
+    const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
 
     useEffect(() => {
-        fetchSeries();
+        loadData();
     }, []);
 
-    useEffect(() => {
-        if (selectedSeries) {
-            fetchEpisodes(selectedSeries.id);
-        } else {
-            setEpisodes([]);
-        }
-    }, [selectedSeries?.id]);
-
-    const fetchSeries = async () => {
+    const loadData = async () => {
         setLoading(true);
-        const { data } = await supabase
-            .from('media_library')
-            .select('*')
-            .eq('category', 'Series')
-            .is('parent_id', null)
-            .order('created_at', { ascending: false });
-
-        if (data) setSeries(data as MediaItem[]);
-        setLoading(false);
+        try {
+            const [seriesData, genresData] = await Promise.all([
+                contentService.listSeries({ limit: 100 }),
+                contentService.getGenres()
+            ]);
+            setSeries(seriesData.data);
+            setGenres(genresData);
+        } catch (error) {
+            console.error('Error loading data:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const fetchEpisodes = async (parentId: string) => {
-        const { data } = await supabase
-            .from('media_library')
-            .select('*')
-            .eq('parent_id', parentId)
-            .order('season_number', { ascending: true })
-            .order('episode_number', { ascending: true });
-
-        if (data) setEpisodes(data as MediaItem[]);
+    const handleCreateSeries = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            await contentService.createSeries(seriesForm);
+            await loadData();
+            setView('list');
+            resetSeriesForm();
+        } catch (error) {
+            console.error('Error creating series:', error);
+            alert('Failed to create series');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleAddEpisode = async () => {
-        if (!selectedSeries || !videoFile || !episodeForm.title) {
-            showDialog('Missing Info', 'Please fill in all required fields and select a video', undefined, 'info', true);
+    const handleCreateSeason = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedSeries) return;
+
+        // Validation for duplicate season
+        const exists = selectedSeries.seasons?.some(s => s.season_number === seasonForm.season_number);
+        if (exists) {
+            alert(`Season ${seasonForm.season_number} already exists for this series.`);
             return;
         }
 
-        setIsUploading(true);
-        setUploadProgress(0);
-
+        setLoading(true);
         try {
-            // Upload video
-            const videoUrl = await r2Service.uploadFile(
-                videoFile,
-                'videos',
-                (progress) => setUploadProgress(progress.percentage)
+            await contentService.createSeason({
+                ...seasonForm,
+                series_id: selectedSeries.id
+            });
+            const updated = await contentService.getSeries(selectedSeries.id);
+            setSelectedSeries(updated);
+            setView('manage-series');
+            resetSeasonForm();
+        } catch (error) {
+            console.error('Error creating season:', error);
+            alert('Failed to create season');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateEpisode = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedSeries || !selectedSeason) return;
+
+        // Validation for duplicate episode
+        const exists = selectedSeason.episodes?.some(ep => ep.episode_number === episodeForm.episode_number);
+        if (exists) {
+            alert(`Episode ${episodeForm.episode_number} already exists in Season ${selectedSeason.season_number}.`);
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await contentService.createEpisode({
+                ...episodeForm,
+                series_id: selectedSeries.id,
+                season_id: selectedSeason.id
+            });
+            const updated = await contentService.getSeries(selectedSeries.id);
+            setSelectedSeries(updated);
+            // Update selected season to show new episode
+            const newSeason = updated.seasons?.find(s => s.id === selectedSeason.id);
+            if (newSeason) setSelectedSeason(newSeason);
+
+            setView('manage-series');
+            resetEpisodeForm();
+        } catch (error) {
+            console.error('Error creating episode:', error);
+            alert('Failed to create episode');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVideoUpload = async (file: File, field: 'series' | 'episode') => {
+        const uploadId = `${field}-${Date.now()}`;
+        try {
+            const url = await contentService.uploadVideo(
+                file,
+                `videos/${field}`,
+                (progress) => {
+                    setUploadProgress(prev => ({ ...prev, [uploadId]: progress }));
+                }
             );
 
-            // Upload or generate cover
-            let coverUrl = '';
-            if (coverFile) {
-                coverUrl = await r2Service.uploadFile(coverFile, 'covers');
-            } else {
-                try {
-                    const thumbnail = await r2Service.generateThumbnail(videoFile);
-                    coverUrl = await r2Service.uploadFile(thumbnail, 'covers');
-                } catch {
-                    coverUrl = selectedSeries.cover_url; // Use series cover as fallback
-                }
+            if (field === 'episode') {
+                setEpisodeForm(prev => ({ ...prev, video_url: url }));
             }
 
-            // Insert episode into database
-            const { error } = await supabase.from('media_library').insert({
-                title: episodeForm.title,
-                description: episodeForm.description,
-                category: 'Episode',
-                genre: selectedSeries.genre,
-                release_year: selectedSeries.release_year,
-                parent_id: selectedSeries.id,
-                season_number: episodeForm.season_number,
-                episode_number: episodeForm.episode_number,
-                stream_url: videoUrl.replace(CLOUDFLARE_BASE_URL, ''),
-                cover_url: coverUrl.replace(CLOUDFLARE_BASE_URL, ''),
-                is_active: true,
+            setUploadProgress(prev => {
+                const newProgress = { ...prev };
+                delete newProgress[uploadId];
+                return newProgress;
             });
-
-            if (error) throw error;
-
-            showDialog('Success', 'Episode added successfully!', () => {
-                setDialog(d => ({ ...d, isOpen: false }));
-                resetEpisodeForm();
-                fetchEpisodes(selectedSeries.id);
-                setActiveTab('list');
-                onRefresh();
-            }, 'info', true);
-        } catch (error: any) {
+        } catch (error) {
             console.error('Upload error:', error);
-            showDialog('Error', `Upload failed: ${error.message}`, undefined, 'danger', true);
-        } finally {
-            setIsUploading(false);
+            alert('Failed to upload video');
         }
     };
 
-    const handleUpdateEpisode = async () => {
-        if (!editingEpisode || !episodeForm.title) {
-            alert('Please fill in all required fields');
-            return;
-        }
+    const availableSeasonNumbers = selectedSeries?.seasons
+        ? Array.from({ length: 50 }, (_, i) => i + 1).filter(num => !selectedSeries.seasons?.some(s => s.season_number === num))
+        : [];
 
-        setIsUploading(true);
+    const availableEpisodeNumbers = selectedSeason?.episodes
+        ? Array.from({ length: 100 }, (_, i) => i + 1).filter(num => !selectedSeason.episodes?.some(ep => ep.episode_number === num))
+        : [];
 
+    const handleImageUpload = async (file: File, field: keyof SeriesFormData) => {
         try {
-            let updateData: any = {
-                title: episodeForm.title,
-                description: episodeForm.description,
-                season_number: episodeForm.season_number,
-                episode_number: episodeForm.episode_number,
-            };
-
-            // Upload new video if provided
-            if (videoFile) {
-                const videoUrl = await r2Service.uploadFile(
-                    videoFile,
-                    'videos',
-                    (progress) => setUploadProgress(progress.percentage)
-                );
-                updateData.stream_url = videoUrl.replace(CLOUDFLARE_BASE_URL, '');
-            }
-
-            // Upload new cover if provided
-            if (coverFile) {
-                const coverUrl = await r2Service.uploadFile(coverFile, 'covers');
-                updateData.cover_url = coverUrl.replace(CLOUDFLARE_BASE_URL, '');
-            }
-
-            const { error } = await supabase
-                .from('media_library')
-                .upsert({ id: editingEpisode.id, ...updateData }, { onConflict: 'id' });
-
-            if (error) throw error;
-
-            alert('Episode updated successfully!');
-            setEditingEpisode(null);
-            resetEpisodeForm();
-            if (selectedSeries) fetchEpisodes(selectedSeries.id);
-            setActiveTab('list');
-            onRefresh();
-        } catch (error: any) {
-            console.error('Update error:', error);
-            alert(`Update failed: ${error.message}`);
-        } finally {
-            setIsUploading(false);
+            const url = await contentService.uploadImage(file, 'images/series');
+            setSeriesForm(prev => ({ ...prev, [field]: url }));
+        } catch (error) {
+            console.error('Upload error:', error);
+            alert('Failed to upload image');
         }
     };
 
-    const handleDeleteEpisode = async (episode: MediaItem) => {
-        showDialog(
-            'Confirm Deletion',
-            `Are you sure you want to delete "${episode.title}"? This cannot be undone.`,
-            async () => {
-                const { error } = await supabase
-                    .from('media_library')
-                    .delete()
-                    .eq('id', episode.id);
-
-                if (error) {
-                    showDialog('Error', `Delete failed: ${error.message}`, undefined, 'danger', true);
-                } else {
-                    if (selectedSeries) fetchEpisodes(selectedSeries.id);
-                    onRefresh();
-                    setDialog(d => ({ ...d, isOpen: false }));
-                }
-            },
-            'danger'
-        );
-    };
-
-    const handleToggleActive = async (episode: MediaItem) => {
-        const { error } = await supabase
-            .from('media_library')
-            .upsert({ id: episode.id, is_active: !episode.is_active }, { onConflict: 'id' });
-
-        if (!error && selectedSeries) {
-            fetchEpisodes(selectedSeries.id);
-        }
-    };
-
-    const startEditEpisode = (episode: MediaItem) => {
-        setEditingEpisode(episode);
-        setEpisodeForm({
-            title: episode.title,
-            description: episode.description || '',
-            season_number: episode.season_number || 1,
-            episode_number: episode.episode_number || 1,
+    const resetSeriesForm = () => {
+        setSeriesForm({
+            title: '',
+            description: '',
+            status: 'ongoing',
+            genre_ids: [],
+            is_featured: false,
+            is_published: false
         });
-        setActiveTab('edit');
+    };
+
+    const resetSeasonForm = () => {
+        setSeasonForm({
+            series_id: '',
+            season_number: 1,
+            title: '',
+            is_published: false
+        });
     };
 
     const resetEpisodeForm = () => {
         setEpisodeForm({
+            series_id: '',
+            season_id: '',
+            episode_number: 1,
             title: '',
-            description: '',
-            season_number: 1,
-            episode_number: getNextEpisodeNumber(),
+            video_url: '',
+            is_published: false
         });
-        setVideoFile(null);
-        setCoverFile(null);
-        if (videoInputRef.current) videoInputRef.current.value = '';
-        if (coverInputRef.current) coverInputRef.current.value = '';
     };
 
-    const getNextEpisodeNumber = () => {
-        if (episodes.length === 0) return 1;
-        const maxEp = Math.max(...episodes.map(e => e.episode_number || 0));
-        return maxEp + 1;
+    const handleManageSeries = async (seriesItem: Series) => {
+        const fullSeries = await contentService.getSeries(seriesItem.id);
+        setSelectedSeries(fullSeries);
+        setView('manage-series');
     };
 
-    // Group episodes by season
-    const groupedBySeason = episodes.reduce((acc, ep) => {
-        const season = ep.season_number || 1;
-        if (!acc[season]) acc[season] = [];
-        acc[season].push(ep);
-        return acc;
-    }, {} as Record<number, MediaItem[]>);
+    const handleAddSeasonClick = () => {
+        if (!selectedSeries) return;
+        const maxSeason = selectedSeries.seasons?.reduce((max, s) => Math.max(max, s.season_number), 0) || 0;
+        setSeasonForm(prev => ({ ...prev, season_number: maxSeason + 1 }));
+        setView('create-season');
+    };
+
+    const handleAddEpisodeClick = (season: Season) => {
+        setSelectedSeason(season);
+        const maxEpisode = season.episodes?.reduce((max, e) => Math.max(max, e.episode_number), 0) || 0;
+        setEpisodeForm(prev => ({ ...prev, episode_number: maxEpisode + 1 }));
+        setView('create-episode');
+    };
 
     return (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl overflow-y-auto">
-            {/* Header */}
-            <div className="sticky top-0 z-50 bg-black/90 backdrop-blur-md border-b border-white/10 px-4 md:px-8 py-4">
+        <div className="space-y-6 pb-20">
+            {/* HEADER */}
+            <div className="bg-gradient-to-br from-white/10 to-white/5 rounded-[32px] border border-white/10 p-8 backdrop-blur-xl">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={selectedSeries ? () => { setSelectedSeries(null); setActiveTab('list'); } : onClose}
-                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all"
-                        >
-                            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                            </svg>
-                        </button>
-                        <div>
-                            <h1 className="text-lg md:text-xl font-black uppercase tracking-widest text-white">
-                                {selectedSeries ? selectedSeries.title : 'Series Manager'}
-                            </h1>
-                            <p className="text-xs text-slate-500 uppercase tracking-widest">
-                                {selectedSeries ? `${episodes.length} Episodes` : `${series.length} Series`}
-                            </p>
-                        </div>
+                    <div>
+                        <h2 className="text-3xl font-black uppercase tracking-widest text-white mb-2">
+                            Series Manager
+                        </h2>
+                        <p className="text-sm text-slate-400">Manage TV shows, web series, and episodic content</p>
                     </div>
-
-                    {selectedSeries && (
-                        <div className="flex gap-2">
+                    <div className="flex gap-3">
+                        {view !== 'list' && (
                             <button
-                                onClick={() => { resetEpisodeForm(); setActiveTab('add'); }}
-                                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'add'
-                                    ? 'bg-orange-600 text-white'
-                                    : 'bg-white/5 text-slate-400 hover:bg-white/10'
-                                    }`}
+                                onClick={() => {
+                                    setView('list');
+                                    setSelectedSeries(null);
+                                    setSelectedSeason(null);
+                                }}
+                                className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold transition-all"
                             >
-                                + Add Episode
+                                ← Back to List
                             </button>
-                        </div>
-                    )}
+                        )}
+                        {view === 'list' && (
+                            <button
+                                onClick={() => setView('create-series')}
+                                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl text-white font-black uppercase tracking-widest transition-all shadow-xl"
+                            >
+                                + Create Series
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className="p-4 md:p-8 max-w-6xl mx-auto">
-                {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                ) : !selectedSeries ? (
-                    // SERIES LIST
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {series.map(s => (
-                            <button
-                                key={s.id}
-                                onClick={() => setSelectedSeries(s)}
-                                className="group relative aspect-[2/3] rounded-2xl overflow-hidden bg-white/5 border border-white/10 hover:border-orange-500/50 transition-all hover:scale-105"
-                            >
-                                {s.cover_url ? (
-                                    <img
-                                        src={getFullUrl(s.cover_url)}
-                                        alt={s.title}
-                                        className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
-                                    />
+            {/* SERIES LIST VIEW */}
+            {view === 'list' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {series.map(item => (
+                        <div
+                            key={item.id}
+                            className="group bg-white/5 rounded-2xl border border-white/10 overflow-hidden hover:border-purple-500/50 transition-all cursor-pointer"
+                            onClick={() => handleManageSeries(item)}
+                        >
+                            <div className="aspect-[2/3] bg-gradient-to-br from-slate-800 to-black relative">
+                                {item.poster_url ? (
+                                    <img src={item.poster_url} alt={item.title} className="w-full h-full object-cover" />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-orange-900/20 to-black">
-                                        <span className="text-4xl">📺</span>
+                                    <div className="w-full h-full flex items-center justify-center text-6xl font-black text-white/10">
+                                        {item.title[0]}
                                     </div>
                                 )}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
-                                <div className="absolute bottom-0 left-0 right-0 p-4">
-                                    <h3 className="text-sm font-black uppercase tracking-widest text-white truncate">{s.title}</h3>
-                                    <p className="text-xs text-slate-400 mt-1">{s.release_year} • {s.genre}</p>
+                                <div className="absolute top-2 right-2 flex gap-2">
+                                    {item.is_featured && (
+                                        <span className="px-2 py-1 bg-yellow-500 text-black rounded-lg text-xs font-black">
+                                            FEATURED
+                                        </span>
+                                    )}
+                                    {item.is_published ? (
+                                        <span className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-xs font-black">
+                                            LIVE
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-1 bg-slate-600 text-white rounded-lg text-xs font-black">
+                                            DRAFT
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="absolute top-3 right-3 bg-orange-600 px-2 py-1 rounded-full text-[10px] font-black uppercase">
-                                    Series
-                                </div>
-                            </button>
-                        ))}
-
-                        {series.length === 0 && (
-                            <div className="col-span-full text-center py-20 opacity-50">
-                                <span className="text-6xl block mb-4">📺</span>
-                                <p className="text-sm uppercase tracking-widest">No series found</p>
-                                <p className="text-xs text-slate-500 mt-2">Create a series first from the Media Upload panel</p>
                             </div>
-                        )}
-                    </div>
-                ) : activeTab === 'add' || activeTab === 'edit' ? (
-                    // ADD/EDIT EPISODE FORM
-                    <div className="max-w-2xl mx-auto space-y-6">
-                        <h2 className="text-xl font-black uppercase tracking-widest text-orange-500 mb-6">
-                            {activeTab === 'edit' ? 'Edit Episode' : 'Add New Episode'}
-                        </h2>
+                            <div className="p-4">
+                                <h3 className="text-lg font-bold text-white truncate">{item.title}</h3>
+                                <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
+                                    <span>{item.total_seasons} Season{item.total_seasons !== 1 ? 's' : ''}</span>
+                                    <span>•</span>
+                                    <span>{item.total_episodes} Episode{item.total_episodes !== 1 ? 's' : ''}</span>
+                                </div>
+                                {item.rating && (
+                                    <div className="mt-2 flex items-center gap-1">
+                                        <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                        </svg>
+                                        <span className="text-sm font-bold text-white">{item.rating}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
-                        <div className="grid grid-cols-2 gap-4">
+            {/* CREATE SERIES FORM */}
+            {view === 'create-series' && (
+                <div className="bg-white/5 rounded-[32px] border border-white/10 p-8">
+                    <h3 className="text-2xl font-black text-white mb-6">Create New Series</h3>
+                    <form onSubmit={handleCreateSeries} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                                    Season Number
-                                </label>
+                                <label className="block text-sm font-bold text-white mb-2">Title *</label>
                                 <input
-                                    type="number"
-                                    value={episodeForm.season_number}
-                                    onChange={(e) => setEpisodeForm({ ...episodeForm, season_number: parseInt(e.target.value) || 1 })}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500/50"
-                                    min="1"
+                                    type="text"
+                                    required
+                                    value={seriesForm.title}
+                                    onChange={e => setSeriesForm(prev => ({ ...prev, title: e.target.value }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                    placeholder="Enter series title"
                                 />
                             </div>
+
                             <div>
-                                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                                    Episode Number
-                                </label>
+                                <label className="block text-sm font-bold text-white mb-2">Release Year</label>
                                 <input
                                     type="number"
-                                    value={episodeForm.episode_number}
-                                    onChange={(e) => setEpisodeForm({ ...episodeForm, episode_number: parseInt(e.target.value) || 1 })}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500/50"
-                                    min="1"
+                                    value={seriesForm.release_year || ''}
+                                    onChange={e => setSeriesForm(prev => ({ ...prev, release_year: parseInt(e.target.value) || undefined }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                    placeholder="2024"
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                                Episode Title *
-                            </label>
-                            <input
-                                type="text"
-                                value={episodeForm.title}
-                                onChange={(e) => setEpisodeForm({ ...episodeForm, title: e.target.value })}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500/50"
-                                placeholder="Episode title..."
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                                Description
-                            </label>
+                            <label className="block text-sm font-bold text-white mb-2">Description</label>
                             <textarea
-                                value={episodeForm.description}
-                                onChange={(e) => setEpisodeForm({ ...episodeForm, description: e.target.value })}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500/50 h-24"
-                                placeholder="Episode description..."
+                                value={seriesForm.description}
+                                onChange={e => setSeriesForm(prev => ({ ...prev, description: e.target.value }))}
+                                rows={4}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                placeholder="Enter series description"
                             />
                         </div>
 
-                        {/* Video Upload */}
-                        <div>
-                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                                Video File {activeTab === 'add' ? '*' : '(Leave empty to keep current)'}
-                            </label>
-                            <input
-                                ref={videoInputRef}
-                                type="file"
-                                accept="video/mp4,video/webm,video/quicktime"
-                                onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
-                                className="hidden"
-                            />
-                            <button
-                                onClick={() => videoInputRef.current?.click()}
-                                disabled={isUploading}
-                                className="w-full p-4 border-2 border-dashed border-white/20 rounded-xl hover:border-orange-500/50 transition-all text-center disabled:opacity-50"
-                            >
-                                {videoFile ? (
-                                    <div className="flex items-center gap-3 justify-center">
-                                        <span className="text-2xl">🎬</span>
-                                        <div className="text-left">
-                                            <p className="text-sm text-white font-bold truncate">{videoFile.name}</p>
-                                            <p className="text-xs text-slate-500">{(videoFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-slate-500 uppercase tracking-widest">Click to select video</p>
-                                )}
-                            </button>
-                        </div>
-
-                        {/* Cover Upload */}
-                        <div>
-                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-                                Cover Image (Optional - auto-generated if empty)
-                            </label>
-                            <input
-                                ref={coverInputRef}
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-                                className="hidden"
-                            />
-                            <button
-                                onClick={() => coverInputRef.current?.click()}
-                                disabled={isUploading}
-                                className="w-full p-4 border-2 border-dashed border-white/20 rounded-xl hover:border-blue-500/50 transition-all text-center disabled:opacity-50"
-                            >
-                                {coverFile ? (
-                                    <div className="flex items-center gap-3 justify-center">
-                                        <span className="text-2xl">🖼️</span>
-                                        <p className="text-sm text-white font-bold truncate">{coverFile.name}</p>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-slate-500 uppercase tracking-widest">Click to select cover</p>
-                                )}
-                            </button>
-                        </div>
-
-                        {/* Progress Bar */}
-                        {isUploading && (
-                            <div className="bg-white/5 rounded-xl p-4">
-                                <div className="flex justify-between text-xs mb-2">
-                                    <span className="text-slate-400">Uploading...</span>
-                                    <span className="text-orange-400 font-bold">{uploadProgress}%</span>
-                                </div>
-                                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-orange-600 transition-all duration-300"
-                                        style={{ width: `${uploadProgress}%` }}
-                                    />
-                                </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label className="block text-sm font-bold text-white mb-2">Status</label>
+                                <select
+                                    value={seriesForm.status}
+                                    onChange={e => setSeriesForm(prev => ({ ...prev, status: e.target.value as any }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                >
+                                    <option value="ongoing">Ongoing</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
                             </div>
-                        )}
 
-                        {/* Action Buttons */}
-                        <div className="flex gap-3 pt-4">
+                            <div>
+                                <label className="block text-sm font-bold text-white mb-2">Rating</label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    max="10"
+                                    value={seriesForm.rating || ''}
+                                    onChange={e => setSeriesForm(prev => ({ ...prev, rating: parseFloat(e.target.value) || undefined }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                    placeholder="8.5"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-white mb-2">Poster Image</label>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'poster_url')}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-white mb-2">Genres</label>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                {genres.map(genre => (
+                                    <label key={genre.id} className="flex items-center gap-2 text-white cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={seriesForm.genre_ids.includes(genre.id)}
+                                            onChange={e => {
+                                                if (e.target.checked) {
+                                                    setSeriesForm(prev => ({ ...prev, genre_ids: [...prev.genre_ids, genre.id] }));
+                                                } else {
+                                                    setSeriesForm(prev => ({ ...prev, genre_ids: prev.genre_ids.filter(id => id !== genre.id) }));
+                                                }
+                                            }}
+                                            className="rounded"
+                                        />
+                                        <span className="text-sm">{genre.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-6">
+                            <label className="flex items-center gap-2 text-white cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={seriesForm.is_featured}
+                                    onChange={e => setSeriesForm(prev => ({ ...prev, is_featured: e.target.checked }))}
+                                    className="rounded"
+                                />
+                                <span className="text-sm font-bold">Featured</span>
+                            </label>
+
+                            <label className="flex items-center gap-2 text-white cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={seriesForm.is_published}
+                                    onChange={e => setSeriesForm(prev => ({ ...prev, is_published: e.target.checked }))}
+                                    className="rounded"
+                                />
+                                <span className="text-sm font-bold">Publish Immediately</span>
+                            </label>
+                        </div>
+
+                        <div className="flex gap-4">
                             <button
-                                onClick={activeTab === 'edit' ? handleUpdateEpisode : handleAddEpisode}
-                                disabled={isUploading || !episodeForm.title || (activeTab === 'add' && !videoFile)}
-                                className="flex-1 px-6 py-4 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-2xl font-black uppercase text-sm tracking-widest transition-all"
+                                type="submit"
+                                disabled={loading}
+                                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl text-white font-black uppercase tracking-widest transition-all shadow-xl disabled:opacity-50"
                             >
-                                {isUploading ? 'Uploading...' : (activeTab === 'edit' ? 'Update Episode' : 'Add Episode')}
+                                {loading ? 'Creating...' : 'Create Series'}
                             </button>
                             <button
-                                onClick={() => { setActiveTab('list'); setEditingEpisode(null); resetEpisodeForm(); }}
-                                disabled={isUploading}
-                                className="px-6 py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl font-black uppercase text-sm tracking-widest transition-all"
+                                type="button"
+                                onClick={() => setView('list')}
+                                className="px-8 py-4 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold transition-all"
                             >
                                 Cancel
                             </button>
                         </div>
-                    </div>
-                ) : (
-                    // EPISODES LIST (Grouped by Season)
-                    <div className="space-y-8">
-                        {Object.keys(groupedBySeason).length === 0 ? (
-                            <div className="text-center py-20 opacity-50">
-                                <span className="text-6xl block mb-4">🎬</span>
-                                <p className="text-sm uppercase tracking-widest">No episodes yet</p>
-                                <button
-                                    onClick={() => { resetEpisodeForm(); setActiveTab('add'); }}
-                                    className="mt-4 px-6 py-3 bg-orange-600 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-orange-500 transition-all"
-                                >
-                                    Add First Episode
-                                </button>
+                    </form>
+                </div>
+            )}
+
+            {/* MANAGE SERIES VIEW */}
+            {view === 'manage-series' && selectedSeries && (
+                <div className="space-y-6">
+                    {/* Series Info */}
+                    <div className="bg-white/5 rounded-[32px] border border-white/10 p-8">
+                        <div className="flex items-start gap-6">
+                            {selectedSeries.poster_url && (
+                                <img src={selectedSeries.poster_url} alt={selectedSeries.title} className="w-32 h-48 object-cover rounded-xl" />
+                            )}
+                            <div className="flex-1">
+                                <h3 className="text-2xl font-black text-white mb-2">{selectedSeries.title}</h3>
+                                <p className="text-slate-400 mb-4">{selectedSeries.description}</p>
+                                <div className="flex gap-4 text-sm text-slate-400">
+                                    <span>{selectedSeries.total_seasons} Seasons</span>
+                                    <span>•</span>
+                                    <span>{selectedSeries.total_episodes} Episodes</span>
+                                    <span>•</span>
+                                    <span className="capitalize">{selectedSeries.status}</span>
+                                </div>
                             </div>
-                        ) : (
-                            Object.entries(groupedBySeason).map(([season, eps]) => (
-                                <div key={season}>
-                                    <h3 className="text-sm font-black uppercase tracking-[0.3em] text-orange-500 mb-4 flex items-center gap-4">
-                                        Season {season}
-                                        <span className="text-xs text-slate-500 font-normal">({eps.length} episodes)</span>
-                                        <div className="flex-1 h-px bg-white/5" />
-                                    </h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {eps.map(ep => (
-                                            <div
-                                                key={ep.id}
-                                                className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${ep.is_active !== false
-                                                    ? 'bg-white/5 border-white/10'
-                                                    : 'bg-red-900/10 border-red-900/30 opacity-60'
-                                                    }`}
-                                            >
-                                                <div className="w-16 h-12 rounded-lg overflow-hidden bg-black shrink-0">
-                                                    {ep.cover_url ? (
-                                                        <img
-                                                            src={getFullUrl(ep.cover_url)}
-                                                            alt={ep.title}
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center bg-white/5">
-                                                            <span className="text-lg">🎬</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-black bg-orange-600/20 text-orange-400 px-2 py-0.5 rounded-full">
-                                                            S{ep.season_number}E{ep.episode_number}
-                                                        </span>
-                                                        {ep.is_active === false && (
-                                                            <span className="text-[10px] font-black bg-red-600/20 text-red-400 px-2 py-0.5 rounded-full">
-                                                                HIDDEN
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <h4 className="text-sm font-bold text-white truncate mt-1">{ep.title}</h4>
-                                                </div>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <button
-                                                        onClick={() => startEditEpisode(ep)}
-                                                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                                                        title="Edit"
-                                                    >
-                                                        <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleToggleActive(ep)}
-                                                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
-                                                        title={ep.is_active !== false ? 'Hide' : 'Show'}
-                                                    >
-                                                        <svg className={`w-4 h-4 ${ep.is_active !== false ? 'text-yellow-400' : 'text-green-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            {ep.is_active !== false ? (
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                                                            ) : (
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                            )}
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteEpisode(ep)}
-                                                        className="p-2 rounded-lg bg-white/5 hover:bg-red-600/20 transition-all"
-                                                        title="Delete"
-                                                    >
-                                                        <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
+                            <button
+                                onClick={handleAddSeasonClick}
+                                className="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-bold transition-all"
+                            >
+                                + Add Season
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Seasons List */}
+                    <div className="space-y-4">
+                        {selectedSeries.seasons?.map(season => (
+                            <div key={season.id} className="bg-white/5 rounded-2xl border border-white/10 p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h4 className="text-xl font-bold text-white">
+                                            Season {season.season_number}
+                                            {season.title && `: ${season.title}`}
+                                        </h4>
+                                        <p className="text-sm text-slate-400">{season.total_episodes} episodes</p>
+                                    </div>
+                                    <button
+                                        onClick={() => handleAddEpisodeClick(season)}
+                                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white text-sm font-bold transition-all"
+                                    >
+                                        + Add Episode
+                                    </button>
+                                </div>
+                                {/* Episodes would be listed here */}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* CREATE SEASON FORM */}
+            {view === 'create-season' && selectedSeries && (
+                <div className="bg-white/5 rounded-[32px] border border-white/10 p-8">
+                    <h3 className="text-2xl font-black text-white mb-6">Add Season to {selectedSeries.title}</h3>
+                    <form onSubmit={handleCreateSeason} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-bold text-white mb-2">Season Number *</label>
+                                <select
+                                    required
+                                    value={seasonForm.season_number}
+                                    onChange={e => setSeasonForm(prev => ({ ...prev, season_number: parseInt(e.target.value) }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                >
+                                    {[...availableSeasonNumbers, seasonForm.season_number]
+                                        .sort((a, b) => a - b)
+                                        .filter((v, i, a) => a.indexOf(v) === i)
+                                        .map(num => (
+                                            <option key={num} value={num}>Season {num}</option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-white mb-2">Season Title (Optional)</label>
+                                <input
+                                    type="text"
+                                    value={seasonForm.title}
+                                    onChange={e => setSeasonForm(prev => ({ ...prev, title: e.target.value }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                    placeholder="e.g., The Beginning"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-white mb-2">Description</label>
+                            <textarea
+                                value={seasonForm.description}
+                                onChange={e => setSeasonForm(prev => ({ ...prev, description: e.target.value }))}
+                                rows={3}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                            />
+                        </div>
+
+                        <div className="flex gap-4">
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                            >
+                                {loading ? 'Creating...' : 'Create Season'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setView('manage-series')}
+                                className="px-8 py-4 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* CREATE EPISODE FORM */}
+            {view === 'create-episode' && selectedSeries && selectedSeason && (
+                <div className="bg-white/5 rounded-[32px] border border-white/10 p-8">
+                    <h3 className="text-2xl font-black text-white mb-6">
+                        Add Episode to {selectedSeries.title} - Season {selectedSeason.season_number}
+                    </h3>
+                    <form onSubmit={handleCreateEpisode} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-bold text-white mb-2">Episode Number *</label>
+                                <select
+                                    required
+                                    value={episodeForm.episode_number}
+                                    onChange={e => setEpisodeForm(prev => ({ ...prev, episode_number: parseInt(e.target.value) }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                >
+                                    {[...availableEpisodeNumbers, episodeForm.episode_number]
+                                        .sort((a, b) => a - b)
+                                        .filter((v, i, a) => a.indexOf(v) === i)
+                                        .map(num => (
+                                            <option key={num} value={num}>Episode {num}</option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-white mb-2">Episode Title *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={episodeForm.title}
+                                    onChange={e => setEpisodeForm(prev => ({ ...prev, title: e.target.value }))}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                    placeholder="Enter episode title"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-white mb-2">Description</label>
+                            <textarea
+                                value={episodeForm.description}
+                                onChange={e => setEpisodeForm(prev => ({ ...prev, description: e.target.value }))}
+                                rows={3}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-white mb-2">Video File *</label>
+                            <input
+                                type="file"
+                                accept="video/*"
+                                onChange={e => e.target.files?.[0] && handleVideoUpload(e.target.files[0], 'episode')}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                            />
+                            {Object.entries(uploadProgress).map(([id, progress]) => (
+                                <div key={id} className="mt-2">
+                                    <div className="flex justify-between text-xs text-slate-400 mb-1">
+                                        <span>Uploading...</span>
+                                        <span>{progress}%</span>
+                                    </div>
+                                    <div className="w-full bg-black/40 rounded-full h-2">
+                                        <div
+                                            className="bg-purple-600 h-2 rounded-full transition-all"
+                                            style={{ width: `${progress}%` }}
+                                        />
                                     </div>
                                 </div>
-                            ))
-                        )}
-                    </div>
-                )}
-            </div>
+                            ))}
+                        </div>
 
-            <BrandedDialog
-                isOpen={dialog.isOpen}
-                title={dialog.title}
-                message={dialog.message}
-                type={dialog.type}
-                hideCancel={dialog.hideCancel}
-                onConfirm={dialog.onConfirm}
-                onCancel={() => setDialog(d => ({ ...d, isOpen: false }))}
-            />
+                        <div className="flex gap-4">
+                            <button
+                                type="submit"
+                                disabled={loading || !episodeForm.video_url}
+                                className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                            >
+                                {loading ? 'Creating...' : 'Create Episode'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setView('manage-series')}
+                                className="px-8 py-4 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     );
 };

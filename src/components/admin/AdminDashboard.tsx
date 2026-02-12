@@ -13,6 +13,7 @@ import AdminGovernance from './AdminGovernance';
 
 import AdManager from './AdManager';
 import VirtualChannelManager from './VirtualChannelManager';
+import LiveStreamManager from './LiveStreamManager';
 import SeriesManager from './SeriesManager';
 import RemoteDownloader from './RemoteDownloader';
 import BrandLogo from '../frontend/BrandLogo';
@@ -70,7 +71,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
     const [isAuditing, setIsAuditing] = useState(false);
 
     // Persist admin view in localStorage
-    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'images' | 'ads' | 'broadcast' | 'downloader' | 'governance'>(() => {
+    const [adminView, setAdminView] = useState<'overview' | 'users' | 'playlists' | 'media' | 'uploads' | 'analytics' | 'images' | 'ads' | 'broadcast' | 'downloader' | 'governance' | 'live-monitor'>(() => {
         const saved = localStorage.getItem('nexus_admin_view');
         return (saved as any) || 'overview';
     });
@@ -257,6 +258,7 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
         { id: 'overview' as const, label: 'Command Deck', icon: <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /> },
         { id: 'users' as const, label: 'Operator Nodes', icon: <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /> },
         { id: 'playlists' as const, label: 'Signal Sources', icon: <path d="M13 10V3L4 14h7v7l9-11h-7z" /> },
+        { id: 'live-monitor' as const, label: 'Live Monitor', icon: <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /> },
         { id: 'media' as const, label: 'Media Library', icon: <path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /> },
         { id: 'uploads' as const, label: 'Upload to R2', icon: <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /> },
         { id: 'analytics' as const, label: 'R2 Analytics', icon: <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /> },
@@ -568,6 +570,12 @@ const AdminDashboard = ({ stats, user, onClose }: AdminDashboardProps) => {
                     {adminView === 'governance' && (
                         <div className="animate-in fade-in duration-500">
                             <AdminGovernance />
+                        </div>
+                    )}
+
+                    {adminView === 'live-monitor' && (
+                        <div className="animate-in fade-in duration-500">
+                            <LiveStreamManager />
                         </div>
                     )}
 

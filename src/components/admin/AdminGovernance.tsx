@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { r2Service } from '../../services/r2Service';
 
 type Role = 'Operator' | 'Admin' | 'Guest';
 
@@ -77,6 +78,7 @@ const AdminGovernance = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
   const [isCheckingIntegrity, setIsCheckingIntegrity] = useState(false);
+  const [isConfiguringCors, setIsConfiguringCors] = useState(false);
 
   useEffect(() => {
     fetchAllData();
@@ -257,6 +259,31 @@ const AdminGovernance = () => {
       target: 'ALL_SYSTEMS',
       actor_name: 'SYSTEM'
     });
+  };
+
+  const handleFixR2Cors = async () => {
+    setIsConfiguringCors(true);
+    setStatusMessage('Connecting to Cloudflare R2...');
+    try {
+      const success = await r2Service.configureBucketCors();
+      if (success) {
+        setStatusMessage('CORS Rules Applied Successfully');
+        await supabase.from('audit_logs').insert({
+          action: 'R2_CORS_FIX',
+          severity: 'info',
+          target: 'BUCKET_STORAGE',
+          actor_name: 'ADMIN'
+        });
+      } else {
+        setStatusMessage('Failed to apply CORS rules');
+      }
+    } catch (error: any) {
+      console.error(error);
+      setStatusMessage('CORS error: Check credentials');
+    } finally {
+      setIsConfiguringCors(false);
+      setTimeout(() => setStatusMessage(null), 3000);
+    }
   };
 
   const handleModeration = async (id: string, decision: 'approve' | 'reject') => {
@@ -561,6 +588,47 @@ const AdminGovernance = () => {
             >
               Lint Content
             </button>
+          </div>
+        </div>
+
+        {/* Cloudflare & Edge Controls */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-black uppercase tracking-[0.2em]">Cloudflare & Edge</h3>
+            {renderBadge('Advanced', 'bg-orange-600/20 text-orange-300')}
+          </div>
+          <div className="space-y-4">
+            <div className="bg-black/40 border border-white/5 rounded-xl p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-300 mb-2">Manual CORS Sync</h4>
+              <p className="text-[9px] text-slate-500 mb-3">Force apply CORS rules to R2 bucket. Fixes "Duration: 0" or failing metadata in browser.</p>
+              <button
+                onClick={handleFixR2Cors}
+                disabled={isConfiguringCors}
+                className="w-full py-2 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-500/30 text-orange-300 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all"
+              >
+                {isConfiguringCors ? 'Applying Rules...' : 'Repair R2 CORS Policy'}
+              </button>
+            </div>
+
+            <div className="bg-black/40 border border-white/5 rounded-xl p-4">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-300 mb-2">API V4 Integration</h4>
+              <p className="text-[9px] text-slate-500 mb-3">Endpoint: api.cloudflare.com/client/v4</p>
+              <div className="flex gap-2">
+                <button
+                  disabled
+                  className="flex-1 py-2 bg-white/5 border border-white/10 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-not-allowed"
+                >
+                  Purge Edge
+                </button>
+                <button
+                  disabled
+                  className="flex-1 py-2 bg-white/5 border border-white/10 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-not-allowed"
+                >
+                  Clear Cache
+                </button>
+              </div>
+              <p className="mt-2 text-[8px] text-orange-500/60 font-mono text-center">API Token Required for Edge Purge</p>
+            </div>
           </div>
         </div>
 

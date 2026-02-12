@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { promisify } from 'util';
+import os from 'os';
 
 const execPromise = promisify(exec);
 dotenv.config();
@@ -34,7 +35,11 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
     process.exit(1);
 }
 
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const DOWNLOAD_DIR = path.join(os.tmpdir(), 'kairo-downloads');
+if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
 
 const r2Client = new S3Client({
     region: 'auto',
@@ -45,8 +50,19 @@ const r2Client = new S3Client({
     },
 });
 
-const DOWNLOAD_DIR = path.join(process.cwd(), 'temp_downloads');
-if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
+// Clean up any leaked files from previous runs
+function cleanupTemp() {
+    try {
+        const files = fs.readdirSync(DOWNLOAD_DIR);
+        for (const file of files) {
+            fs.unlinkSync(path.join(DOWNLOAD_DIR, file));
+        }
+        console.log('[Init] Temp directory cleaned');
+    } catch (e) {
+        console.warn('[Init] Temp cleanup failed:', e.message);
+    }
+}
+cleanupTemp();
 
 // Throttle updates to Supabase to once every 2 seconds per task
 const lastUpdate = new Map();
@@ -80,36 +96,66 @@ async function addToMediaLibrary(task, displayTitle, r2Url, duration, descriptio
 }
 
 async function uploadToR2(id, localPath, filename, folder) {
+    console.log(`[R2] Preparing upload for: ${filename}`);
     await updateTask(id, { status: 'uploading', progress: 0 });
 
-    const fileStream = fs.createReadStream(localPath);
-    const slug = slugify(filename.replace(/\.[^/.]+$/, ""));
-    const key = `${folder}/${Date.now()}_${slug}${path.extname(filename)}`;
-
-    const upload = new Upload({
-        client: r2Client,
-        params: {
-            Bucket: R2_BUCKET_NAME,
-            Key: key,
-            Body: fileStream,
-            ContentType: 'video/mp4',
-        },
-        queueSize: 4,
-        partSize: 1024 * 1024 * 5,
-    });
-
-    upload.on('httpUploadProgress', (progress) => {
-        if (progress.loaded && progress.total) {
-            const p = Math.round((progress.loaded / progress.total) * 100);
-            updateTask(id, { progress: p });
+    try {
+        if (!fs.existsSync(localPath)) {
+            throw new Error(`Local file not found for upload: ${localPath}`);
         }
-    });
 
-    await upload.done();
+        const fileStream = fs.createReadStream(localPath);
+        const fileStats = fs.statSync(localPath);
+        const slug = slugify(filename.replace(/\.[^/.]+$/, ""));
+        const key = `${folder}/${Date.now()}_${slug}${path.extname(filename)}`;
 
-    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+        console.log(`[R2] Uploading ${fileStats.size} bytes to: ${key}`);
+        console.log(`[R2] Using access key: ${R2_ACCESS_KEY_ID?.substring(0, 5)}...`);
 
-    return `${R2_PUBLIC_URL}/${key}`;
+        const upload = new Upload({
+            client: r2Client,
+            params: {
+                Bucket: R2_BUCKET_NAME,
+                Key: key,
+                Body: fileStream,
+                ContentType: 'video/mp4',
+            },
+            // R2 works better with slightly larger parts and single concurrency for stability
+            queueSize: 1,
+            partSize: 5 * 1024 * 1024, // 5MB parts (standard min for S3/R2)
+            leavePartsOnError: false,
+        });
+
+        upload.on('httpUploadProgress', (progress) => {
+            if (progress.loaded && progress.total) {
+                const p = Math.round((progress.loaded / progress.total) * 100);
+                // Throttle logs
+                if (p % 10 === 0) console.log(`[R2] Upload Progress: ${p}%`);
+                updateTask(id, { progress: p });
+            }
+        });
+
+        await upload.done();
+        console.log(`[R2] Success: ${key}`);
+        return `${R2_PUBLIC_URL}/${key}`;
+    } catch (err) {
+        console.error(`[R2] Upload Failed Details:`, err);
+        // If signature mismatch, explicitly log it
+        if (err.name === 'SignatureDoesNotMatch' || err.message?.includes('signature')) {
+            console.error('[R2] Critical: Signature Mismatch. Check system time, keys, and region.');
+        }
+        throw err;
+    } finally {
+        // ENSURE LOCAL FILE IS REMOVED
+        if (fs.existsSync(localPath)) {
+            try {
+                fs.unlinkSync(localPath);
+                console.log(`[Clean] Removed local file: ${localPath}`);
+            } catch (e) {
+                console.error(`[Clean] Failed to remove ${localPath}:`, e);
+            }
+        }
+    }
 }
 
 async function processYoutube(task) {

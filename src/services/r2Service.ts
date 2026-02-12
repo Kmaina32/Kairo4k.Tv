@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, DeleteObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, DeleteObjectCommand, HeadBucketCommand, PutBucketCorsCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from '@aws-sdk/lib-storage';
 
@@ -15,6 +15,7 @@ const PUBLIC_URL = import.meta.env.VITE_CF_PUBLIC_URL || 'https://pub-d51716508a
 const r2Client = new S3Client({
     region: 'auto',
     endpoint: R2_ENDPOINT,
+    forcePathStyle: true,
     credentials: {
         accessKeyId: R2_ACCESS_KEY_ID,
         secretAccessKey: R2_SECRET_ACCESS_KEY,
@@ -287,6 +288,37 @@ class CloudflareR2Service {
         const blob = await base64Response.blob();
 
         return new File([blob], `${videoFile.name}_thumb.jpg`, { type: 'image/jpeg' });
+    }
+
+    /**
+     * Automatically configure CORS for the bucket to allow browser-based 
+     * metadata extraction and video seeking.
+     */
+    async configureBucketCors(): Promise<boolean> {
+        try {
+            console.log(`[R2] Configuring CORS for bucket: ${R2_BUCKET_NAME}`);
+            const command = new PutBucketCorsCommand({
+                Bucket: R2_BUCKET_NAME,
+                CORSConfiguration: {
+                    CORSRules: [
+                        {
+                            AllowedHeaders: ['*'],
+                            AllowedMethods: ['GET', 'HEAD', 'PUT', 'POST'],
+                            AllowedOrigins: ['*'], // In production, replace with actual domains
+                            ExposeHeaders: ['Content-Length', 'Content-Type', 'ETag'],
+                            MaxAgeSeconds: 3000
+                        }
+                    ]
+                }
+            });
+
+            await r2Client.send(command);
+            console.log('[R2] CORS configuration applied successfully');
+            return true;
+        } catch (error) {
+            console.error('[R2] CORS configuration failed:', error);
+            return false;
+        }
     }
 }
 

@@ -107,6 +107,7 @@ const RemoteDownloader = () => {
             // 2. Trigger the downloader (Supabase Function or local worker)
             // We attempt to utilize the edge function if available, but fail silently if not deployed
             // as the local back-end worker will pick up the 'pending' task regardless.
+            /* 
             const { error: triggerError } = await supabase.functions.invoke('process-remote-download', {
                 body: { taskId: data.id }
             });
@@ -115,6 +116,7 @@ const RemoteDownloader = () => {
                 // This is expected if the Edge Function isn't deployed. The local worker will handle it.
                 console.warn('Edge Function trigger failed (using local worker fallback):', triggerError);
             }
+            */
 
         } catch (err: any) {
             // Only show error dialog if the INITIAL INSERT failed.
@@ -129,7 +131,8 @@ const RemoteDownloader = () => {
     const handleRetryTask = async (id: string) => {
         const { error } = await supabase
             .from('download_tasks')
-            .upsert({ id, status: 'pending', progress: 0, error: null }, { onConflict: 'id' });
+            .update({ status: 'pending', progress: 0, error: null })
+            .eq('id', id);
         if (!error) fetchTasks();
     };
 

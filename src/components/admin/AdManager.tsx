@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import AdUploadCenter from './AdUploadCenter';
 
 const AdManager = () => {
     const STORAGE_KEY = 'nexus_ad_manager_state';
@@ -9,6 +10,7 @@ const AdManager = () => {
     const [loading, setLoading] = useState(true);
     const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
     const [editingAdId, setEditingAdId] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'overview' | 'upload'>('overview');
 
     const [draftAd, setDraftAd] = useState({
         title: '',
@@ -29,6 +31,7 @@ const AdManager = () => {
             if (parsed?.draftAd) setDraftAd(parsed.draftAd);
             if (parsed?.modalMode) setModalMode(parsed.modalMode);
             if (parsed?.editingAdId) setEditingAdId(parsed.editingAdId);
+            if (parsed?.activeTab) setActiveTab(parsed.activeTab);
         } catch {
             // ignore malformed storage
         }
@@ -38,9 +41,10 @@ const AdManager = () => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             modalMode,
             editingAdId,
-            draftAd
+            draftAd,
+            activeTab
         }));
-    }, [modalMode, editingAdId, draftAd]);
+    }, [modalMode, editingAdId, draftAd, activeTab]);
 
     const fetchAdData = async () => {
         setLoading(true);
@@ -104,84 +108,111 @@ const AdManager = () => {
     };
 
     return (
-        <div className="space-y-12 animate-in fade-in duration-500">
-            {/* Header */}
-            <div className="flex justify-between items-end">
-                <div>
-                    <h2 className="text-2xl font-black uppercase tracking-widest text-white">Revenue Control</h2>
-                    <p className="text-[10px] text-orange-500 font-black mt-1 uppercase tracking-widest">Ad Injection & Monetization</p>
+        <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+            {/* Header with Tabs */}
+            <div className="bg-gradient-to-br from-orange-500/10 to-white/5 rounded-[32px] border border-orange-500/20 p-8 backdrop-blur-xl shadow-2xl">
+                <div className="flex justify-between items-end mb-6">
+                    <div>
+                        <h2 className="text-3xl font-black uppercase tracking-widest text-white mb-2">Revenue Control</h2>
+                        <p className="text-[10px] text-orange-400 font-black uppercase tracking-widest">Ad Injection & Monetization</p>
+                    </div>
+                    {activeTab === 'overview' && (
+                        <button
+                            onClick={openCreateModal}
+                            className="px-6 py-3 bg-orange-600 hover:bg-orange-500 rounded-xl font-black uppercase text-xs tracking-widest text-white transition-all shadow-xl"
+                        >
+                            Create Ad Clip
+                        </button>
+                    )}
                 </div>
-                <button
-                    onClick={openCreateModal}
-                    className="px-6 py-3 bg-white text-black rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-orange-500 hover:text-white transition-all shadow-xl"
-                >
-                    Create Ad Clip
-                </button>
+
+                {/* Tab Navigation */}
+                <div className="flex gap-2 bg-black/40 rounded-xl p-1 border border-white/10">
+                    <button
+                        onClick={() => setActiveTab('overview')}
+                        className={`flex-1 px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                    >
+                        Overview & Config
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('upload')}
+                        className={`flex-1 px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'upload' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+                    >
+                        Upload Center
+                    </button>
+                </div>
             </div>
 
-            {/* Ads Config Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {configs.map(config => (
-                    <div key={config.id} className="bg-white/5 border border-white/10 rounded-3xl p-6 relative overflow-hidden group">
-                        <div className={`absolute top-0 right-0 w-1 h-full ${config.is_enabled ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">{config.placement}</h4>
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm font-black text-white uppercase">{config.target_category}</span>
-                            <button
-                                onClick={() => handleToggleConfig(config)}
-                                className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${config.is_enabled ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
-                            >
-                                {config.is_enabled ? 'ENABLED' : 'DISABLED'}
-                            </button>
+            {/* Tab Content */}
+            {activeTab === 'overview' ? (
+                <>
+                    {/* Ads Config Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {configs.map(config => (
+                            <div key={config.id} className="bg-white/5 border border-white/10 rounded-3xl p-6 relative overflow-hidden group hover:border-orange-500/30 transition-all">
+                                <div className={`absolute top-0 right-0 w-1 h-full ${config.is_enabled ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">{config.placement}</h4>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-black text-white uppercase">{config.target_category}</span>
+                                    <button
+                                        onClick={() => handleToggleConfig(config)}
+                                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${config.is_enabled ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
+                                    >
+                                        {config.is_enabled ? 'ENABLED' : 'DISABLED'}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Ads Library */}
+                    <div className="bg-white/5 border border-white/10 rounded-[32px] overflow-hidden backdrop-blur-xl">
+                        <div className="p-8 border-b border-white/5">
+                            <h3 className="text-lg font-black uppercase tracking-widest text-white">Ad Library</h3>
+                        </div>
+                        <div className="p-8">
+                            {ads.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {ads.map(ad => (
+                                        <div key={ad.id} className="bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center gap-4 group hover:border-orange-500/30 transition-all">
+                                            <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center text-xs font-black text-orange-400 shrink-0">
+                                                AD
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="text-xs font-black uppercase text-white truncate">{ad.title}</h4>
+                                                <p className="text-[9px] font-mono text-slate-500 truncate mt-1">{ad.duration}s • {ad.ad_url}</p>
+                                            </div>
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => openEditModal(ad)}
+                                                    className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteAd(ad)}
+                                                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="py-20 text-center opacity-20">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.4em]">No Ad Transmissions Found</p>
+                                </div>
+                            )}
+                            {loading && (
+                                <div className="pt-6 text-[9px] font-mono text-slate-600 uppercase">Loading...</div>
+                            )}
                         </div>
                     </div>
-                ))}
-            </div>
-
-            {/* Ads Library */}
-            <div className="bg-white/5 border border-white/10 rounded-[40px] overflow-hidden">
-                <div className="p-8 border-b border-white/5">
-                    <h3 className="text-sm font-black uppercase tracking-widest text-white">Ad Library</h3>
-                </div>
-                <div className="p-8">
-                    {ads.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {ads.map(ad => (
-                                <div key={ad.id} className="bg-black/40 border border-white/5 rounded-2xl p-4 flex items-center gap-4 group">
-                                    <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-[10px] font-black text-white/70">
-                                        AD
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="text-[11px] font-black uppercase text-white truncate">{ad.title}</h4>
-                                        <p className="text-[9px] font-mono text-slate-500 truncate mt-1">{ad.duration}s • {ad.ad_url}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button
-                                            onClick={() => openEditModal(ad)}
-                                            className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteAd(ad)}
-                                            className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="py-20 text-center opacity-20">
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em]">No Ad Transmissions Found</p>
-                        </div>
-                    )}
-                    {loading && (
-                        <div className="pt-6 text-[9px] font-mono text-slate-600 uppercase">Loading...</div>
-                    )}
-                </div>
-            </div>
+                </>
+            ) : (
+                <AdUploadCenter />
+            )}
 
             {/* Modal */}
             {modalMode && (

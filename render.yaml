@@ -1,0 +1,43 @@
+services:
+  # 1. The Frontend Web App (React)
+  - type: web
+    name: geniues-streamer-web
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_CF_ACCOUNT_ID
+        sync: false
+      - key: VITE_CF_ACCESS_KEY_ID
+        sync: false
+      - key: VITE_CF_SECRET_ACCESS_KEY
+        sync: false
+      - key: VITE_CF_BUCKET_NAME
+        sync: false
+      - key: VITE_CF_PUBLIC_URL
+        sync: false
+
+  # 2. The Backend Worker (Node.js + ffmpeg + yt-dlp)
+  - type: worker
+    name: geniues-streamer-worker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_CF_ACCOUNT_ID
+        sync: false
+      - key: VITE_CF_ACCESS_KEY_ID
+        sync: false
+      - key: VITE_CF_SECRET_ACCESS_KEY
+        sync: false
+      - key: VITE_CF_BUCKET_NAME
+        sync: false
+      - key: VITE_CF_PUBLIC_URL
+        sync: false

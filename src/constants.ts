@@ -360,4 +360,5 @@ export const PROXY_OPTIONS = [
 
 export const CACHE_TTL = 1000 * 60 * 30;
 
-export const CLOUDFLARE_BASE_URL = import.meta.env.VITE_CF_PUBLIC_URL || 'https://pub-d51716508a97e95180a31909e42b26b1.r2.dev';
+const rawUrl = import.meta.env.VITE_CF_PUBLIC_URL || 'https://pub-d51716508a97e95180a31909e42b26b1.r2.dev';
+export const CLOUDFLARE_BASE_URL = rawUrl.endsWith('/') ? rawUrl : `${rawUrl}/`;

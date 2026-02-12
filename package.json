@@ -7,12 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "vite preview --port $PORT --host"
+    "start": "vite preview --port $PORT --host",
+    "android": "npx cap open android",
+    "sync": "npx cap sync",
+    "build:android": "npm run build && npx cap sync"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.985.0",
     "@aws-sdk/lib-storage": "^3.985.0",
     "@aws-sdk/s3-request-presigner": "^3.985.0",
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
     "@supabase/supabase-js": "^2.95.3",
     "dotenv": "^17.2.4",
     "hls.js": "^1.6.15",

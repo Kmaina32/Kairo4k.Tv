@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { CLOUDFLARE_BASE_URL } from '../../constants';
+import R2FileBrowser from './R2FileBrowser';
 
 interface MediaModalProps {
     onClose: () => void;
@@ -21,6 +22,7 @@ const MediaModal = ({ onClose, onSuccess, initialData, parentId }: MediaModalPro
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showR2Browser, setShowR2Browser] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -170,7 +172,17 @@ const MediaModal = ({ onClose, onSuccess, initialData, parentId }: MediaModalPro
                     </div>
 
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stream URL (R2 Filename or Full URL)</label>
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stream URL (R2 Filename or Full URL)</label>
+                            <button
+                                type="button"
+                                onClick={() => setShowR2Browser(true)}
+                                className="text-[9px] font-black uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                            >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                                Browse R2
+                            </button>
+                        </div>
                         <input
                             type="text"
                             value={streamUrl}
@@ -179,6 +191,17 @@ const MediaModal = ({ onClose, onSuccess, initialData, parentId }: MediaModalPro
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all font-mono"
                         />
                     </div>
+
+                    {/* R2 BROWSER MODAL */}
+                    {showR2Browser && (
+                        <R2FileBrowser
+                            onSelect={(filename) => {
+                                setStreamUrl(filename);
+                                setShowR2Browser(false);
+                            }}
+                            onClose={() => setShowR2Browser(false)}
+                        />
+                    )}
 
                     <div className="space-y-1">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cover Art URL</label>
