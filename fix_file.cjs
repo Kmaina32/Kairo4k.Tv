@@ -1,5 +1,5 @@
 const fs = require('fs');
-const path = 'c:/Users/Engineer Kairo Maina/Desktop/Geniues-Streamer-/src/components/admin/VirtualChannelManager.tsx';
+const path = 'c:/Users/Engineer Kairo Maina/Desktop/Kairo 4K-Streamer-/src/components/admin/VirtualChannelManager.tsx';
 let content = fs.readFileSync(path, 'utf8');
 
 // Fix the corrupted content - the literal \n characters

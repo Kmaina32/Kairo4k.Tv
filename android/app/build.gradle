@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.geniues.streamer"
+    namespace = "com.Kairo 4K.streamer"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.geniues.streamer"
+        applicationId "com.Kairo 4K.streamer"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

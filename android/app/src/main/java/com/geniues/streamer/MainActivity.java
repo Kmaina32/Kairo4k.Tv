@@ -1,4 +1,4 @@
-package com.geniues.streamer;
+package com.Kairo 4K.streamer;
 
 import com.getcapacitor.BridgeActivity;
 

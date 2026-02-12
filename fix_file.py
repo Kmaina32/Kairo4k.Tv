@@ -1,4 +1,4 @@
-file_path = 'c:/Users/Engineer Kairo Maina/Desktop/Geniues-Streamer-/src/components/admin/VirtualChannelManager.tsx'
+file_path = 'c:/Users/Engineer Kairo Maina/Desktop/Kairo 4K-Streamer-/src/components/admin/VirtualChannelManager.tsx'
 
 with open(file_path, 'r', encoding='utf-8') as f:
     content = f.read()

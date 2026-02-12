@@ -1,6 +1,6 @@
 # Android Distribution & Installation Guide
 
-This guide covers how to build, package, and distribute the Android version of **Geniues Streamer**.
+This guide covers how to build, package, and distribute the Android version of **Kairo 4K Streamer**.
 
 ## 🚀 Prerequisites
 
@@ -110,6 +110,6 @@ If you want to distribute to a closed group of testers:
 ## ⚠️ Important Notes
 
 - **Keystore Security**: **NEVER lose your keystore file or password.** If you lose it, you will not be able to update your app on the Play Store and will have to publish a completely new app with a different package name.
-- **Package Name**: Your package name is `com.geniues.streamer`. This is unique and cannot be changed once published.
+- **Package Name**: Your package name is `com.Kairo 4K.streamer`. This is unique and cannot be changed once published.
 - **Permissions**: The app currently requests `INTERNET` permission. If you add features like camera or location, ensure you handle runtime permissions correctly.
 

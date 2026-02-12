@@ -1,7 +1,7 @@
 services:
   # 1. The Frontend Web App (React)
   - type: web
-    name: geniues-streamer-web
+    name: Kairo 4K-streamer-web
     env: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
@@ -23,7 +23,7 @@ services:
 
   # 2. The Backend Worker (Node.js + ffmpeg + yt-dlp)
   - type: worker
-    name: geniues-streamer-worker
+    name: Kairo 4K-streamer-worker
     env: docker
     dockerfilePath: ./Dockerfile
     envVars:

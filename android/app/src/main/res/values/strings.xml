@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Geniues Streamer</string>
-    <string name="title_activity_main">Geniues Streamer</string>
-    <string name="package_name">com.geniues.streamer</string>
-    <string name="custom_url_scheme">com.geniues.streamer</string>
+    <string name="app_name">Kairo 4K Streamer</string>
+    <string name="title_activity_main">Kairo 4K Streamer</string>
+    <string name="package_name">com.Kairo 4K.streamer</string>
+    <string name="custom_url_scheme">com.Kairo 4K.streamer</string>
 </resources>
