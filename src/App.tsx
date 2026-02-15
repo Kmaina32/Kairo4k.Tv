@@ -5,22 +5,22 @@ import { parseM3U } from './services/m3uParser';
 import { cloudService } from './services/cloudService';
 
 // Aero-Flow Components
-import VideoPlayer from './components/viewer/VideoPlayer';
+import VideoPlayer from './components/viewer/player/VideoPlayer';
 import Header from './components/frontend/Header';
 import LoadingScreen from './components/frontend/LoadingScreen';
 import MobileNav from './components/frontend/MobileNav';
-import AccountPage from './components/viewer/AccountPage';
-import AdminDashboard from './components/admin/AdminDashboard';
-import NexusChat from './components/viewer/NexusChat';
+import AccountPage from './components/viewer/pages/AccountPage';
+import AdminDashboard from './components/admin/dashboard/AdminDashboard';
+import NexusChat from './components/viewer/ui/NexusChat';
 import AuthScreen from './components/backend/AuthScreen';
-import MoviesPage from './components/viewer/MoviesPage';
-import PlaylistsPage from './components/viewer/PlaylistsPage';
-import FavoritesPage from './components/viewer/FavoritesPage';
-import WatchlistPage from './components/viewer/WatchlistPage';
-import HistoryPage from './components/viewer/HistoryPage';
-import SubscriptionsPage from './components/viewer/SubscriptionsPage';
-import MediaFavoritesPage from './components/viewer/MediaFavoritesPage';
-import VirtualSyncPlayer from './components/viewer/VirtualSyncPlayer';
+import MoviesPage from './components/viewer/pages/MoviesPage';
+import PlaylistsPage from './components/viewer/pages/PlaylistsPage';
+import FavoritesPage from './components/viewer/pages/FavoritesPage';
+import WatchlistPage from './components/viewer/pages/WatchlistPage';
+import HistoryPage from './components/viewer/pages/HistoryPage';
+import SubscriptionsPage from './components/viewer/pages/SubscriptionsPage';
+import MediaFavoritesPage from './components/viewer/pages/MediaFavoritesPage';
+import VirtualSyncPlayer from './components/viewer/player/VirtualSyncPlayer';
 import { supabase } from './services/supabaseClient';
 import { PlaylistSource } from './types';
 
