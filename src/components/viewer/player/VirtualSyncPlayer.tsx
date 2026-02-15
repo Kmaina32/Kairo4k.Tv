@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '../../services/supabaseClient';
-import { ADMIN_TEST_DURATION_KEY, ADMIN_TEST_DURATION_SECONDS, CLOUDFLARE_BASE_URL, APP_BRANDING } from '../../constants';
+import { supabase } from '../../../services/supabaseClient';
+import { ADMIN_TEST_DURATION_KEY, ADMIN_TEST_DURATION_SECONDS, CLOUDFLARE_BASE_URL, APP_BRANDING } from '../../../constants';
 import VideoPlayer from './VideoPlayer';
 
 interface VirtualSyncPlayerProps {
